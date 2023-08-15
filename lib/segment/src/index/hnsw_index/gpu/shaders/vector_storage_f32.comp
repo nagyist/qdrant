@@ -1,0 +1,22 @@
+#ifndef VECTOR_STORAGE_F32_HEADER
+#define VECTOR_STORAGE_F32_HEADER
+
+#define VECTOR_STORAGE_ELEMENT_TYPE vec4
+
+#ifdef COSINE_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot(a, b)
+#endif
+
+#ifdef DOT_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot(a, b)
+#endif
+
+#ifdef EUCLID_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) vec4_components_sum((a - b) * (a - b))
+#endif
+
+#ifdef MANHATTAN_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) vec4_components_sum(abs(a - b))
+#endif
+
+#endif

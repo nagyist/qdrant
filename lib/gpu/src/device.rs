@@ -1,0 +1,261 @@
+use std::ffi::CString;
+use std::ptr;
+use std::sync::{Arc, Mutex};
+
+use ash::vk;
+use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, Allocator, AllocatorCreateDesc};
+
+use crate::*;
+
+#[derive(Clone)]
+pub struct Queue {
+    pub vk_queue: vk::Queue,
+    pub vk_queue_family_index: usize,
+    pub vk_queue_index: usize,
+}
+
+pub struct Device {
+    pub name: String,
+    pub instance: Arc<Instance>,
+    pub vk_device: ash::Device,
+    pub vk_physical_device: vk::PhysicalDevice,
+    pub gpu_allocator: Option<Mutex<Allocator>>,
+    // TODO(gpu): utilize all compute queues
+    pub compute_queues: Vec<Queue>,
+    pub transfer_queues: Vec<Queue>,
+    pub subgroup_size: usize,
+    pub is_dynamic_subgroup_size: bool,
+    pub max_compute_work_group_size: [usize; 3],
+    pub max_buffer_size: usize,
+    pub compiler: shaderc::Compiler,
+    pub queue_index: usize,
+}
+
+impl Device {
+    pub fn new(instance: Arc<Instance>, vk_physical_device: PhysicalDevice) -> Option<Device> {
+        Self::new_with_queue_index(instance, vk_physical_device, 0)
+    }
+
+    pub fn new_with_queue_index(
+        instance: Arc<Instance>,
+        vk_physical_device: PhysicalDevice,
+        queue_index: usize,
+    ) -> Option<Device> {
+        #[allow(unused_mut)]
+        let mut extensions_cstr: Vec<CString> =
+            vec![CString::from(ash::vk::KhrMaintenance1Fn::name())];
+        #[cfg(target_os = "macos")]
+        {
+            extensions_cstr.push(CString::from(ash::vk::KhrPortabilitySubsetFn::name()));
+        }
+
+        let vk_queue_families = unsafe {
+            instance
+                .vk_instance
+                .get_physical_device_queue_family_properties(vk_physical_device.vk_physical_device)
+        };
+
+        let max_queue_priorities_count = vk_queue_families
+            .iter()
+            .map(|vk_queue_family| vk_queue_family.queue_count as usize)
+            .max()?;
+        let queue_priorities = vec![0.; max_queue_priorities_count];
+
+        let queue_create_infos: Vec<vk::DeviceQueueCreateInfo> = vk_queue_families
+            .iter()
+            .enumerate()
+            .map(|(index, vk_queue_family)| vk::DeviceQueueCreateInfo {
+                s_type: vk::StructureType::DEVICE_QUEUE_CREATE_INFO,
+                p_next: ptr::null(),
+                flags: vk::DeviceQueueCreateFlags::empty(),
+                queue_family_index: index as u32,
+                p_queue_priorities: queue_priorities.as_ptr(),
+                queue_count: vk_queue_family.queue_count,
+            })
+            .collect();
+
+        let physical_device_features = vk::PhysicalDeviceFeatures {
+            ..Default::default()
+        };
+
+        // TODO(gpu): check presence of features
+        let physical_device_features_1_1 =
+            vk::PhysicalDeviceVulkan11Features::builder().storage_buffer16_bit_access(true);
+
+        let physical_device_features_1_2 = vk::PhysicalDeviceVulkan12Features::builder()
+            .shader_int8(true)
+            .shader_float16(true)
+            .storage_buffer8_bit_access(true);
+
+        let mut physical_device_features_1_3 = vk::PhysicalDeviceVulkan13Features::builder();
+
+        let extension_names_raw: Vec<*const i8> = extensions_cstr
+            .iter()
+            .map(|raw_name| raw_name.as_ptr())
+            .collect();
+
+        let max_compute_work_group_size;
+        let max_buffer_size;
+        let mut is_dynamic_subgroup_size = false;
+        let subgroup_size = unsafe {
+            let props = instance
+                .vk_instance
+                .get_physical_device_properties(vk_physical_device.vk_physical_device);
+            max_compute_work_group_size = [
+                props.limits.max_compute_work_group_size[0] as usize,
+                props.limits.max_compute_work_group_size[1] as usize,
+                props.limits.max_compute_work_group_size[2] as usize,
+            ];
+            max_buffer_size = props.limits.max_storage_buffer_range as usize;
+            let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties::default();
+            let mut vulkan_1_3_properties = vk::PhysicalDeviceVulkan13Properties::default();
+            let mut props2 = vk::PhysicalDeviceProperties2::builder()
+                .push_next(&mut subgroup_properties)
+                .push_next(&mut vulkan_1_3_properties)
+                .build();
+            instance.vk_instance.get_physical_device_properties2(
+                vk_physical_device.vk_physical_device,
+                &mut props2,
+            );
+            log::info!(
+                "Choosed GPU device: {:?}",
+                ::std::ffi::CStr::from_ptr(props.device_name.as_ptr())
+            );
+
+            let subgroup_size = if vulkan_1_3_properties.min_subgroup_size
+                != vulkan_1_3_properties.max_subgroup_size
+            {
+                if !vulkan_1_3_properties
+                    .required_subgroup_size_stages
+                    .contains(vk::ShaderStageFlags::COMPUTE)
+                {
+                    // A strange situation where subgroup size can be different but we cannot set it.
+                    // We cannot handle this case (we have to know subgroup size), so skip device creation.
+                    return None;
+                }
+                is_dynamic_subgroup_size = true;
+                physical_device_features_1_3 =
+                    physical_device_features_1_3.subgroup_size_control(true);
+                // prefer max subgroup size
+                vulkan_1_3_properties.max_subgroup_size as usize
+            } else {
+                subgroup_properties.subgroup_size as usize
+            };
+
+            log::debug!("GPU subgroup size: {subgroup_size}");
+            subgroup_size
+        };
+
+        let mut physical_device_features_1_1 = physical_device_features_1_1.build();
+
+        let mut physical_device_features_1_2 = physical_device_features_1_2.build();
+
+        let mut physical_device_features_1_3 = physical_device_features_1_3.build();
+
+        let device_create_info = vk::DeviceCreateInfo::builder()
+            .flags(vk::DeviceCreateFlags::empty())
+            .queue_create_infos(&queue_create_infos)
+            .enabled_extension_names(&extension_names_raw)
+            .enabled_features(&physical_device_features)
+            .push_next(&mut physical_device_features_1_1)
+            .push_next(&mut physical_device_features_1_2)
+            .push_next(&mut physical_device_features_1_3)
+            .build();
+
+        let vk_device = unsafe {
+            instance.vk_instance.create_device(
+                vk_physical_device.vk_physical_device,
+                &device_create_info,
+                instance.alloc.as_ref(),
+            )
+        };
+
+        let mut compute_queues = Vec::new();
+        let mut transfer_queues = Vec::new();
+        if let Ok(vk_device) = vk_device {
+            for (vk_queue_family_index, vk_queue_family) in vk_queue_families.iter().enumerate() {
+                for vk_queue_index in 0..vk_queue_family.queue_count as usize {
+                    let vk_queue = unsafe {
+                        vk_device
+                            .get_device_queue(vk_queue_family_index as u32, vk_queue_index as u32)
+                    };
+                    let queue = Queue {
+                        vk_queue,
+                        vk_queue_index,
+                        vk_queue_family_index,
+                    };
+
+                    let queue_flags = vk_queue_family.queue_flags;
+                    if vk_queue != vk::Queue::null() {
+                        if queue_flags.contains(vk::QueueFlags::TRANSFER) {
+                            transfer_queues.push(queue.clone());
+                        }
+                        if queue_flags.contains(vk::QueueFlags::COMPUTE) {
+                            compute_queues.push(queue);
+                        }
+                    }
+                }
+            }
+
+            let gpu_allocator = Some(Mutex::new(
+                Allocator::new(&AllocatorCreateDesc {
+                    instance: instance.vk_instance.clone(),
+                    device: vk_device.clone(),
+                    physical_device: vk_physical_device.vk_physical_device,
+                    debug_settings: Default::default(),
+                    buffer_device_address: false,
+                })
+                .ok()?,
+            ));
+
+            let compiler = shaderc::Compiler::new().unwrap();
+            Some(Device {
+                name: vk_physical_device.name.clone(),
+                instance: instance.clone(),
+                vk_device,
+                vk_physical_device: vk_physical_device.vk_physical_device,
+                gpu_allocator,
+                compute_queues,
+                transfer_queues,
+                subgroup_size,
+                max_compute_work_group_size,
+                max_buffer_size,
+                compiler,
+                is_dynamic_subgroup_size,
+                queue_index,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn alloc(&self) -> Option<&vk::AllocationCallbacks> {
+        self.instance.alloc.as_ref()
+    }
+
+    pub fn gpu_alloc(&self, allocation_desc: &AllocationCreateDesc) -> GpuResult<Allocation> {
+        let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock().unwrap();
+        gpu_allocator
+            .allocate(allocation_desc)
+            .map_err(GpuError::AllocationError)
+    }
+
+    pub fn gpu_free(&self, allocation: Allocation) {
+        let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock().unwrap();
+        gpu_allocator.free(allocation).unwrap();
+    }
+
+    pub fn subgroup_size(&self) -> usize {
+        self.subgroup_size
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        self.gpu_allocator = None;
+        unsafe {
+            self.vk_device.device_wait_idle().unwrap();
+            self.vk_device.destroy_device(self.alloc());
+        }
+    }
+}

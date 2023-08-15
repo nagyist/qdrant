@@ -126,6 +126,30 @@ pub struct TlsConfig {
     pub cert_ttl: Option<u64>,
 }
 
+#[derive(Clone, Debug, Deserialize, Validate)]
+#[allow(dead_code)]
+pub struct GpuConfig {
+    #[serde(default)]
+    pub indexing: bool,
+    #[serde(default)]
+    pub force_half_precision: bool,
+    #[serde(default)]
+    #[validate(range(min = 1))]
+    pub max_groups: Option<usize>,
+    #[serde(default)]
+    pub device_index: Option<usize>,
+    #[serde(default)]
+    pub devices_count: Option<usize>,
+    #[serde(default)]
+    pub device_filter: String,
+    #[serde(default)]
+    pub min_points: Option<usize>,
+    #[serde(default)]
+    pub wait_free: Option<bool>,
+    #[serde(default)]
+    pub parallel_indexes: Option<usize>,
+}
+
 #[derive(Debug, Deserialize, Clone, Validate)]
 #[allow(dead_code)] // necessary because some field are only used in main.rs
 pub struct Settings {
@@ -151,6 +175,9 @@ pub struct Settings {
     /// We therefore need to log these messages later, after the logger is ready.
     #[serde(default, skip)]
     pub load_errors: Vec<LogMsg>,
+    #[serde(default)]
+    #[validate(nested)]
+    pub gpu: Option<GpuConfig>,
 }
 
 impl Settings {

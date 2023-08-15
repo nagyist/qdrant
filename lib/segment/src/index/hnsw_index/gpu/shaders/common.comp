@@ -1,0 +1,26 @@
+#ifndef COMMON_HEADER
+#define COMMON_HEADER
+
+#define SUBGROUP_ID (gl_GlobalInvocationID.x / SUBGROUP_SIZE)
+#define SUBGROUP_INVOCATION_ID gl_SubgroupInvocationID 
+
+#define CONCAT(a, b) a##_##b
+
+#define POINT_ID uint
+
+const POINT_ID INVALID_POINT_ID = 0xffffffff;
+
+const float positive_infinity = 1.0 / 0.0;
+const float negative_infinity = -1.0 / 0.0;
+#define UINT_MAX 0xffffffff
+
+struct ScoredPoint {
+    POINT_ID id;
+    float score;
+};
+
+float vec4_components_sum(vec4 v) {
+    return v.x + v.y + v.z + v.w;
+}
+
+#endif

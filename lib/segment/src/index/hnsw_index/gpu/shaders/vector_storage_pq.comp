@@ -1,0 +1,27 @@
+#ifndef VECTOR_STORAGE_PQ_HEADER
+#define VECTOR_STORAGE_PQ_HEADER
+
+float dot_u8vec4(u8vec4 a, u8vec4 b) {
+    uint sum = uint(a.x) * uint(b.x) + uint(a.y) * uint(b.y) + uint(a.z) * uint(b.z) + uint(a.w) * uint(b.w);
+    return float(sum);
+}
+
+#define VECTOR_STORAGE_ELEMENT_TYPE u8vec4
+
+#ifdef COSINE_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+#endif
+
+#ifdef DOT_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+#endif
+
+#ifdef EUCLID_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+#endif
+
+#ifdef MANHATTAN_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+#endif
+
+#endif
