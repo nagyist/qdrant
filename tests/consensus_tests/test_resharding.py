@@ -2,6 +2,7 @@ import multiprocessing
 import pathlib
 import random
 from time import sleep
+from typing import Any
 
 from .test_dummy_shard import assert_http_response
 
@@ -120,6 +121,53 @@ def test_resharding_try_remove_target_shard(tmp_path: pathlib.Path):
     })
 
     assert_http(resp, 400)
+
+def test_resharding_down_abort_cleanup(tmp_path: pathlib.Path):
+    # Bootstrap resharding cluster
+    peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=1000, direction="down")
+
+    # Migrate points from shard 2 to shard 0
+    to_peer_id = migrate_points(peer_uris[0], 2, 0)
+
+    # Get target peer URI
+    to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
+
+    # Assert that some points were migrated to target peer
+    resp = requests.post(f"{to_peer_uri}/collections/{COLLECTION_NAME}/shards/0/points/scroll", json={
+        "hash_ring_filter": {
+            "expected_shard_id": 2,
+        }
+    })
+
+    assert_http_ok(resp)
+
+    points = resp.json()['result']['points']
+    assert len(points) > 0
+
+    # Abort resharding
+    resp = abort_resharding(peer_uris[0])
+    assert_http_ok(resp)
+
+    # Wait for resharding to abort
+    wait_for_collection_resharding_operations_count(peer_uris[0], COLLECTION_NAME, 0)
+
+    # Assert that all replicas are in `Active` state
+    info = get_collection_cluster_info(peer_uris[0], COLLECTION_NAME)
+
+    for replica in all_replicas(info):
+        assert replica["state"] == "Active"
+
+    # Assert that migrated points were deleted from target peer
+    resp = requests.post(f"{to_peer_uri}/collections/{COLLECTION_NAME}/shards/0/points/scroll", json={
+        "hash_ring_filter": {
+            "expected_shard_id": 2,
+        }
+    })
+
+    assert_http_ok(resp)
+
+    points = resp.json()['result']['points']
+    assert len(points) == 0
 
 def bootstrap_resharding(
     tmp_path: pathlib.Path,
@@ -246,6 +294,66 @@ def abort_resharding(peer_uri: str, collection: str = COLLECTION_NAME):
     return requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "abort_resharding": {}
     })
+
+
+def migrate_points(peer_uri: str, shard_id: int, to_shard_id: int, collection: str = COLLECTION_NAME) -> int:
+    # Find peers for resharding transfer
+    info = get_collection_cluster_info(peer_uri, collection)
+
+    from_peer_id = None
+    to_peer_id = None
+
+    for replica in all_replicas(info):
+        if replica["shard_id"] == shard_id:
+            from_peer_id = from_peer_id or replica["peer_id"]
+        elif replica["shard_id"] == to_shard_id:
+            to_peer_id = to_peer_id or replica["peer_id"]
+
+    # Start resharding transfer
+    resp = requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
+        "replicate_shard": {
+            "from_peer_id": from_peer_id,
+            "to_peer_id": to_peer_id,
+            "shard_id": shard_id,
+            "to_shard_id": to_shard_id,
+            "method": "resharding_stream_records",
+        }
+    })
+
+    assert_http_ok(resp)
+
+    # Wait for resharding trasnfer to start
+    sleep(1)
+
+    # Wait for resharding transfer to finish or abort
+    wait_for_collection_shard_transfers_count(peer_uri, collection, 0)
+
+    # Assert that resharding transfer finished successfully
+    info = get_collection_cluster_info(peer_uri, collection)
+
+    # Assert that resharding is still in progress
+    assert "resharding_operations" in info and len(info["resharding_operations"]) > 0
+
+    # Assert that `to_peer_id`/`to_shard_id` replica is in `Resharding` state
+    migration_successful = False
+
+    for replica in all_replicas(info):
+        if replica["peer_id"] == to_peer_id and replica["shard_id"] == to_shard_id and replica["state"] == "Resharding":
+            migration_successful = True
+            break
+
+    assert migration_successful
+
+    # Return target peer
+    return to_peer_id
+
+def all_replicas(info: dict[Any, Any]):
+    for local in info["local_shards"]:
+        local["peer_id"] = info["peer_id"]
+        yield local
+
+    for remote in info["remote_shards"]:
+        yield remote
 
 
 def try_requests(
