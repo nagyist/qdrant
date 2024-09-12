@@ -218,7 +218,7 @@ def start_resharding(
     peer_id: int | None = None,
     shard_key: str | None = None,
     **kwargs,
-) -> requests.Response:
+):
     return requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "start_resharding": {
             "direction": direction,
@@ -227,22 +227,22 @@ def start_resharding(
         }
     })
 
-def commit_read_hashring(peer_uri: str, collection: str = COLLECTION_NAME) -> requests.Response:
+def commit_read_hashring(peer_uri: str, collection: str = COLLECTION_NAME):
     return requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "commit_read_hash_ring": {}
     })
 
-def commit_write_hashring(peer_uri: str, collection: str = COLLECTION_NAME) -> requests.Response:
+def commit_write_hashring(peer_uri: str, collection: str = COLLECTION_NAME):
     return requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "commit_write_hash_ring": {}
     })
 
-def finish_resharding(peer_uri: str, collection: str = COLLECTION_NAME) -> requests.Response:
+def finish_resharding(peer_uri: str, collection: str = COLLECTION_NAME):
     return requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "finish_resharding": {}
     })
 
-def abort_resharding(peer_uri: str, collection: str = COLLECTION_NAME) -> requests.Response:
+def abort_resharding(peer_uri: str, collection: str = COLLECTION_NAME):
     return requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "abort_resharding": {}
     })
