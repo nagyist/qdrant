@@ -2,7 +2,7 @@ import multiprocessing
 import pathlib
 import random
 from time import sleep
-from typing import Any
+from typing import Any, Literal
 
 from .test_dummy_shard import assert_http_response
 
@@ -122,27 +122,64 @@ def test_resharding_try_remove_target_shard(tmp_path: pathlib.Path):
 
     assert_http(resp, 400)
 
+@pytest.mark.parametrize("direction", [("up"), ("down")])
+def test_resharding_forward(tmp_path: pathlib.Path, direction: Literal["up", "down"]):
+    # Bootstrap resharding cluster
+    peer_uris, peer_ids = bootstrap_resharding(tmp_path, direction=direction)
+
+    # Upsert points to collection
+    upsert_random_points(peer_uris[0], 1000, collection_name=COLLECTION_NAME)
+
+    # Select shards for the test
+    shard_id, to_shard_id = select_resharding_shards(3, direction)
+
+    # Find peers for the test
+    info = get_collection_cluster_info(peer_uris[0], COLLECTION_NAME)
+    from_peer_id, to_peer_id = find_replicas(info, [shard_id, to_shard_id])
+
+    # Assert that all points were correctly forwarded
+
+
+@pytest.mark.parametrize("direction", [("up"), ("down")])
+def test_resharding_transfer(tmp_path: pathlib.Path, direction: Literal["up", "down"]):
+    # Bootstrap resharding cluster
+    peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=1000, direction=direction)
+
+    # Select shards for resharding transfer
+    shard_id, to_shard_id = select_resharding_shards(3, direction)
+
+    # Migrate points
+    from_peer_id, to_peer_id = migrate_points(peer_uris[0], shard_id, to_shard_id)
+
+    # Get peer URIs
+    from_peer_uri = peer_uris[peer_ids.index(from_peer_id)]
+    to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
+
+    # Assert that all points were correctly migrated
+    offset = 0
+
+    while offset is not None:
+        from_resp = scroll_local_points(from_peer_uri, shard_id, to_shard_id, offset, 1000)
+        to_resp = scroll_local_points(to_peer_uri, to_shard_id, to_shard_id, offset, 1000)
+
+        assert from_resp['points'] == to_resp['points']
+        assert from_resp['next_page_offset'] == to_resp['next_page_offset']
+
+        offset = from_resp['next_page_offset']
+
 def test_resharding_down_abort_cleanup(tmp_path: pathlib.Path):
     # Bootstrap resharding cluster
     peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=1000, direction="down")
 
     # Migrate points from shard 2 to shard 0
-    to_peer_id = migrate_points(peer_uris[0], 2, 0)
+    _, to_peer_id = migrate_points(peer_uris[0], 2, 0)
 
     # Get target peer URI
     to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
 
     # Assert that some points were migrated to target peer
-    resp = requests.post(f"{to_peer_uri}/collections/{COLLECTION_NAME}/shards/0/points/scroll", json={
-        "hash_ring_filter": {
-            "expected_shard_id": 2,
-        }
-    })
-
-    assert_http_ok(resp)
-
-    points = resp.json()['result']['points']
-    assert len(points) > 0
+    resp = scroll_local_points(to_peer_uri, 0, 2)
+    assert len(resp['points']) > 0
 
     # Abort resharding
     resp = abort_resharding(peer_uris[0])
@@ -168,6 +205,7 @@ def test_resharding_down_abort_cleanup(tmp_path: pathlib.Path):
 
     points = resp.json()['result']['points']
     assert len(points) == 0
+
 
 def bootstrap_resharding(
     tmp_path: pathlib.Path,
@@ -262,7 +300,7 @@ def bootstrap_cluster(
 def start_resharding(
     peer_uri: str,
     collection: str = COLLECTION_NAME,
-    direction: str = "up",
+    direction: Literal["up", "down"] = "up",
     peer_id: int | None = None,
     shard_key: str | None = None,
     **kwargs,
@@ -296,18 +334,40 @@ def abort_resharding(peer_uri: str, collection: str = COLLECTION_NAME):
     })
 
 
-def migrate_points(peer_uri: str, shard_id: int, to_shard_id: int, collection: str = COLLECTION_NAME) -> int:
+def scroll_local_points(
+    peer_uri: str,
+    shard_id: int,
+    filter_shard_id: int | None = None,
+    offset: int | None = None,
+    limit: int | None = None,
+    collection: str = COLLECTION_NAME,
+):
+    resp = requests.post(f"{peer_uri}/collections/{collection}/shards/{shard_id}/points/scroll", json={
+        "limit": limit,
+        "offset": offset,
+        "hash_ring_filter": None if filter_shard_id is None else {
+            "expected_shard_id": filter_shard_id,
+        }
+    })
+
+    assert_http_ok(resp)
+
+    return resp.json()['result']
+
+
+def select_resharding_shards(peers: int, direction: Literal["up", "down"]):
+    if direction == "up":
+        return (0, peers)
+    elif direction == "down":
+        assert peers > 1
+        return (peers - 1, 0)
+    else:
+        raise Exception(f"invalid resharding direction {direction}")
+
+def migrate_points(peer_uri: str, shard_id: int, to_shard_id: int, collection: str = COLLECTION_NAME) -> tuple[int, int]:
     # Find peers for resharding transfer
     info = get_collection_cluster_info(peer_uri, collection)
-
-    from_peer_id = None
-    to_peer_id = None
-
-    for replica in all_replicas(info):
-        if replica["shard_id"] == shard_id:
-            from_peer_id = from_peer_id or replica["peer_id"]
-        elif replica["shard_id"] == to_shard_id:
-            to_peer_id = to_peer_id or replica["peer_id"]
+    from_peer_id, to_peer_id = find_replicas(info, [shard_id, to_shard_id])
 
     # Start resharding transfer
     resp = requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
@@ -345,9 +405,20 @@ def migrate_points(peer_uri: str, shard_id: int, to_shard_id: int, collection: s
     assert migration_successful
 
     # Return target peer
-    return to_peer_id
+    return (from_peer_id, to_peer_id)
 
-def all_replicas(info: dict[Any, Any]):
+def find_replicas(info: dict[str, Any], shard_ids: list[int]) -> list[int]:
+    peers = [None for _ in range(len(shard_ids))]
+
+    for replica in all_replicas(info):
+        if idx := shard_ids.index(replica["shard_id"]):
+            peers[idx] = peers[idx] or replica["peer_id"]
+
+    assert None not in peers
+
+    return peers
+
+def all_replicas(info: dict[str, Any]):
     for local in info["local_shards"]:
         local["peer_id"] = info["peer_id"]
         yield local
