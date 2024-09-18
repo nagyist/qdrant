@@ -424,8 +424,9 @@ def find_replicas(info: dict[str, Any], shard_ids: list[int]) -> list[int]:
     peers = [None for _ in range(len(shard_ids))]
 
     for replica in all_replicas(info):
-        if idx := shard_ids.index(replica["shard_id"]):
-            peers[idx] = peers[idx] or replica["peer_id"]
+        for idx, shard_id in enumerate(shard_ids):
+            if replica["shard_id"] == shard_id:
+                peers[idx] = peers[idx] or replica["peer_id"]
 
     assert None not in peers
 
