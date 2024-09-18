@@ -137,8 +137,21 @@ def test_resharding_forward(tmp_path: pathlib.Path, direction: Literal["up", "do
     info = get_collection_cluster_info(peer_uris[0], COLLECTION_NAME)
     from_peer_id, to_peer_id = find_replicas(info, [shard_id, to_shard_id])
 
-    # Assert that all points were correctly forwarded
+    # Get peer URIs
+    from_peer_uri = peer_uris[peer_ids.index(from_peer_id)]
+    to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
 
+    # Assert that all points were correctly forwarded
+    offset = 0
+
+    while offset is not None:
+        from_resp = scroll_local_points(from_peer_uri, shard_id, to_shard_id, offset, 1000)
+        to_resp = scroll_local_points(to_peer_uri, to_shard_id, to_shard_id, offset, 1000)
+
+        assert from_resp['points'] == to_resp['points']
+        assert from_resp['next_page_offset'] == to_resp['next_page_offset']
+
+        offset = from_resp['next_page_offset']
 
 @pytest.mark.parametrize("direction", [("up"), ("down")])
 def test_resharding_transfer(tmp_path: pathlib.Path, direction: Literal["up", "down"]):
