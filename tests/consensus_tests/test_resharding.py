@@ -463,7 +463,7 @@ def migrate_points(
 
     assert_http_ok(resp)
 
-    # Wait for resharding trasnfer to start
+    # Wait for resharding transfer to start
     sleep(1)
 
     # Wait for resharding transfer to finish or abort
