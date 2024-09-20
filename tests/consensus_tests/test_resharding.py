@@ -122,77 +122,105 @@ def test_resharding_try_remove_target_shard(tmp_path: pathlib.Path):
 
     assert_http(resp, 400)
 
-@pytest.mark.parametrize("direction", [("up"), ("down")])
-def test_resharding_forward(tmp_path: pathlib.Path, direction: Literal["up", "down"]):
+@pytest.mark.parametrize("direction, peers", [("up", 3), ("down", 3)])
+def test_resharding_forward(tmp_path: pathlib.Path, direction: Literal["up", "down"], peers: int):
     # Bootstrap resharding cluster
-    peer_uris, peer_ids = bootstrap_resharding(tmp_path, direction=direction)
+    peer_uris, peer_ids = bootstrap_resharding(tmp_path, direction=direction, peers=peers)
 
     # Upsert points to collection
     upsert_random_points(peer_uris[0], 1000, collection_name=COLLECTION_NAME)
 
-    # Select shards for the test
-    shard_id, to_shard_id = select_resharding_shards(3, direction)
-
-    # Find peers for the test
+    # Get collection cluster info
     info = get_collection_cluster_info(peer_uris[0], COLLECTION_NAME)
-    from_peer_id, to_peer_id = find_replicas(info, [shard_id, to_shard_id])
 
-    # Get peer URIs
-    from_peer_uri = peer_uris[peer_ids.index(from_peer_id)]
-    to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
+    # Select target replica
+    target_shard_id = peers if direction == "up" else peers - 1
+    target_peer_id, target_peer_uri = find_replica(target_shard_id, info, peer_uris, peer_ids)
 
-    # Assert that all points were correctly forwarded
-    offset = 0
+    # Create a list to collect replica URIs selected during test
+    replica_uris = []
 
-    while offset is not None:
-        from_resp = scroll_local_points(from_peer_uri, shard_id, to_shard_id, offset, 1000)
-        to_resp = scroll_local_points(to_peer_uri, to_shard_id, to_shard_id, offset, 1000)
+    for shard_id in range(target_shard_id):
+        # Find replicas of selected shard
+        peer_id, peer_uri = find_replica(shard_id, info, peer_uris, peer_ids)
 
-        assert from_resp['points'] == to_resp['points']
-        assert from_resp['next_page_offset'] == to_resp['next_page_offset']
+        # Assert that all points were correctly forwarded
+        assert_resharding_points(peer_uri, shard_id, target_peer_uri, target_shard_id)
 
-        offset = from_resp['next_page_offset']
+        # Append peer URI to the list of replica URIs
+        replica_uris.append(peer_uri)
 
-@pytest.mark.parametrize("direction", [("up"), ("down")])
-def test_resharding_transfer(tmp_path: pathlib.Path, direction: Literal["up", "down"]):
+    # Append target replica to the list of replica URIs
+    replica_uris.append(target_peer_uri)
+
+    # Assert total count of migrated points
+    assert_resharding_points_count(replica_uris)
+
+@pytest.mark.parametrize("direction, peers", [("up", 3), ("down", 3)])
+def test_resharding_transfer(tmp_path: pathlib.Path, direction: Literal["up", "down"], peers: int):
     # Bootstrap resharding cluster
-    peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=1000, direction=direction)
+    peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=1000, direction=direction, peers=peers)
 
-    # Select shards for resharding transfer
-    shard_id, to_shard_id = select_resharding_shards(3, direction)
+    # Get collection cluster info
+    info = get_collection_cluster_info(peer_uris[0], COLLECTION_NAME)
 
-    # Migrate points
-    from_peer_id, to_peer_id = migrate_points(peer_uris[0], shard_id, to_shard_id)
+    # Select target replica
+    target_shard_id = peers if direction == "up" else peers - 1
+    target_peer_id, target_peer_uri = find_replica(target_shard_id, info, peer_uris, peer_ids)
 
-    # Get peer URIs
-    from_peer_uri = peer_uris[peer_ids.index(from_peer_id)]
-    to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
+    # Create a list to collect replica URIs selected during test
+    replica_uris = []
 
-    # Assert that all points were correctly migrated
-    offset = 0
+    for shard_id in range(target_shard_id):
+        # Find replica of selected shard
+        peer_id, peer_uri = find_replica(shard_id, info, peer_uris, peer_ids)
 
-    while offset is not None:
-        from_resp = scroll_local_points(from_peer_uri, shard_id, to_shard_id, offset, 1000)
-        to_resp = scroll_local_points(to_peer_uri, to_shard_id, to_shard_id, offset, 1000)
+        # Migrate resharding points
+        migrate_points(peer_uris[0], peer_id, shard_id, target_peer_id, target_shard_id, direction)
 
-        assert from_resp['points'] == to_resp['points']
-        assert from_resp['next_page_offset'] == to_resp['next_page_offset']
+        # Assert that all points were correctly migrated
+        assert_resharding_points(peer_uri, shard_id, target_peer_uri, target_shard_id)
 
-        offset = from_resp['next_page_offset']
+        # Append peer URI to the list of replica URIs
+        replica_uris.append(peer_uri)
 
-def test_resharding_down_abort_cleanup(tmp_path: pathlib.Path):
+    # Append target replica to the list of replica URIs
+    replica_uris.append(target_peer_uri)
+
+    # Assert total count of migrated points
+    assert_resharding_points_count(replica_uris)
+
+@pytest.mark.parametrize("peers", [(3)])
+def test_resharding_down_abort_cleanup(tmp_path: pathlib.Path, peers: int):
     # Bootstrap resharding cluster
-    peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=1000, direction="down")
+    peer_uris, peer_ids = bootstrap_resharding(tmp_path, upsert_points=500, direction="down", peers=peers)
 
-    # Migrate points from shard 2 to shard 0
-    _, to_peer_id = migrate_points(peer_uris[0], 2, 0)
+    # Upsert points to collection
+    upsert_random_points(peer_uris[0], 500, collection_name=COLLECTION_NAME)
 
-    # Get target peer URI
-    to_peer_uri = peer_uris[peer_ids.index(to_peer_id)]
+    # Get collection cluster info
+    info = get_collection_cluster_info(peer_uris[0], COLLECTION_NAME)
 
-    # Assert that some points were migrated to target peer
-    resp = scroll_local_points(to_peer_uri, 0, 2)
-    assert len(resp['points']) > 0
+    # Select target replica
+    target_shard_id = peers - 1
+    target_peer_id, _ = find_replica(target_shard_id, info, peer_uris, peer_ids)
+
+    # Create a list to collect replica URIs selected during test
+    replica_uris = []
+
+    for shard_id in range(target_shard_id):
+        # Find replica of selected shard
+        peer_id, peer_uri = find_replica(shard_id, info, peer_uris, peer_ids)
+
+        # Migrate resharding points
+        migrate_points(peer_uris[0], peer_id, shard_id, target_peer_id, target_shard_id, "down")
+
+        # Assert that some points were forwarded and/or migrated to selected replica
+        resharding_points_count = count_local_points(peer_uri, shard_id, target_shard_id)
+        assert resharding_points_count > 0
+
+        # Append peer URI to the list of replica URIs
+        replica_uris.append(peer_uri)
 
     # Abort resharding
     resp = abort_resharding(peer_uris[0])
@@ -207,17 +235,10 @@ def test_resharding_down_abort_cleanup(tmp_path: pathlib.Path):
     for replica in all_replicas(info):
         assert replica["state"] == "Active"
 
-    # Assert that migrated points were deleted from target peer
-    resp = requests.post(f"{to_peer_uri}/collections/{COLLECTION_NAME}/shards/0/points/scroll", json={
-        "hash_ring_filter": {
-            "expected_shard_id": 2,
-        }
-    })
-
-    assert_http_ok(resp)
-
-    points = resp.json()['result']['points']
-    assert len(points) == 0
+    # Assert that forwarded and/or migrated points were deleted from non-target replicas
+    for shard_id, peer_uri in enumerate(replica_uris):
+        resharding_points_count = count_local_points(peer_uri, shard_id, target_shard_id)
+        assert resharding_points_count == 0
 
 
 def bootstrap_resharding(
@@ -347,6 +368,21 @@ def abort_resharding(peer_uri: str, collection: str = COLLECTION_NAME):
     })
 
 
+def get_local_points(
+    peer_uri: str,
+    shard_id: int,
+    point_ids: list[int],
+    collection: str = COLLECTION_NAME,
+):
+    resp = requests.post(f"{peer_uri}/collections/{collection}/shards/{shard_id}/points", json = {
+        "ids": point_ids,
+        "with_vector": True,
+        "with_payload": True,
+    })
+
+    assert_http_ok(resp)
+    return resp.json()['result']
+
 def scroll_local_points(
     peer_uri: str,
     shard_id: int,
@@ -360,34 +396,66 @@ def scroll_local_points(
         "offset": offset,
         "hash_ring_filter": None if filter_shard_id is None else {
             "expected_shard_id": filter_shard_id,
-        }
+        },
+        "with_vector": True,
+        "with_payload": True,
     })
 
     assert_http_ok(resp)
-
     return resp.json()['result']
 
+def count_local_points(
+    peer_uri: str,
+    shard_id: int,
+    filter_shard_id: int | None = None,
+    exact: bool = True,
+    collection: str = COLLECTION_NAME,
+) -> int:
+    resp = requests.post(f"{peer_uri}/collections/{collection}/shards/{shard_id}/points/count", json={
+        "exact": exact,
+        "hash_ring_filter": None if filter_shard_id is None else {
+            "expected_shard_id": filter_shard_id,
+        },
+    })
 
-def select_resharding_shards(peers: int, direction: Literal["up", "down"]):
+    assert_http_ok(resp)
+    return resp.json()['result']['count']
+
+
+def migrate_points(
+    peer_uri: str,
+    peer_id: int,
+    shard_id: int,
+    target_peer_id: int,
+    target_shard_id: int,
+    direction: Literal["up", "down"],
+    collection: str = COLLECTION_NAME,
+    info: dict[str, Any] | None = None,
+) -> tuple[int, int]:
+    """
+    Migrates resharding points to or from `shard_id`, depending on resharding `direction`:
+    - if `direction` is "up", migrates points from `shard_id` to target shard
+    - if `direction` is "down", migrates points from target shard to `shard_id`
+    """
+
+    # Select replicas for resharding transfer
     if direction == "up":
-        return (0, peers)
-    elif direction == "down":
-        assert peers > 1
-        return (peers - 1, 0)
+        from_shard_id = shard_id
+        from_peer_id = peer_id
+        to_shard_id = target_shard_id
+        to_peer_id = target_peer_id
     else:
-        raise Exception(f"invalid resharding direction {direction}")
-
-def migrate_points(peer_uri: str, shard_id: int, to_shard_id: int, collection: str = COLLECTION_NAME) -> tuple[int, int]:
-    # Find peers for resharding transfer
-    info = get_collection_cluster_info(peer_uri, collection)
-    from_peer_id, to_peer_id = find_replicas(info, [shard_id, to_shard_id])
+        from_shard_id = target_shard_id
+        from_peer_id = target_peer_id
+        to_shard_id = shard_id
+        to_peer_id = peer_id
 
     # Start resharding transfer
     resp = requests.post(f"{peer_uri}/collections/{collection}/cluster", json={
         "replicate_shard": {
             "from_peer_id": from_peer_id,
             "to_peer_id": to_peer_id,
-            "shard_id": shard_id,
+            "shard_id": from_shard_id,
             "to_shard_id": to_shard_id,
             "method": "resharding_stream_records",
         }
@@ -407,30 +475,69 @@ def migrate_points(peer_uri: str, shard_id: int, to_shard_id: int, collection: s
     # Assert that resharding is still in progress
     assert "resharding_operations" in info and len(info["resharding_operations"]) > 0
 
-    # Assert that `to_peer_id`/`to_shard_id` replica is in `Resharding` state
+    # Assert that replica `to_shard_id`@`to_peer_id` is in `Resharding` state
     migration_successful = False
 
     for replica in all_replicas(info):
-        if replica["peer_id"] == to_peer_id and replica["shard_id"] == to_shard_id and replica["state"] == "Resharding":
+        if replica["shard_id"] == to_shard_id and replica["peer_id"] == to_peer_id and replica["state"] == "Resharding":
             migration_successful = True
             break
 
     assert migration_successful
 
-    # Return target peer
-    return (from_peer_id, to_peer_id)
+    # Return replicas used for resharding transfer
+    return (peer_id, target_peer_id)
 
-def find_replicas(info: dict[str, Any], shard_ids: list[int]) -> list[int]:
-    peers = [None for _ in range(len(shard_ids))]
+def assert_resharding_points(peer_uri: str, shard_id: int, target_peer_uri: str, target_shard_id: int):
+    """
+    Asserts that target replica contains all resharding points from selected replica
+    and these points are exactly the same between replicas
+    """
 
+    offset = 0
+
+    while offset is not None:
+        # Scroll resharding points in selected replica
+        resp = scroll_local_points(peer_uri, shard_id, target_shard_id, offset, 1000)
+
+        # Fetch the same points from target replica
+        target_resp = get_local_points(target_peer_uri, target_shard_id, [point['id'] for point in resp['points']])
+
+        # Assert that target replica contains all resharding points from selected replica
+        # and these points are exactly the same between replicas
+        assert target_resp == resp['points']
+
+        offset = resp['next_page_offset']
+
+def assert_resharding_points_count(replica_uris: list[str]):
+    """
+    Asserts that target replica points count matches total resharding points count in all other replicas
+    """
+
+    # Select target replica
+    target_shard_id = len(replica_uris) - 1
+    target_shard_uri = replica_uris[-1]
+
+    # Get points count in target replica
+    target_points_count = count_local_points(target_shard_uri, target_shard_id)
+
+    # Calculate total resharding points count in all other replicas
+    total_resharding_points_count = 0
+
+    for shard_id, shard_uri in enumerate(replica_uris[:-1]):
+        total_resharding_points_count += count_local_points(shard_uri, shard_id, target_shard_id)
+
+    # Assert target replica points count matches total resharding points count
+    assert target_points_count == total_resharding_points_count
+
+def find_replica(shard_id: int, info: dict[str, Any], peer_uris: list[str], peer_ids: list[int]) -> tuple[int, str]:
     for replica in all_replicas(info):
-        for idx, shard_id in enumerate(shard_ids):
-            if replica["shard_id"] == shard_id:
-                peers[idx] = peers[idx] or replica["peer_id"]
+        if replica["shard_id"] == shard_id:
+            peer_id = replica["peer_id"]
+            peer_uri = peer_uris[peer_ids.index(peer_id)]
+            return (peer_id, peer_uri)
 
-    assert None not in peers
-
-    return peers
+    raise Exception(f"replica of shard {shard_id} not found: {info}")
 
 def all_replicas(info: dict[str, Any]):
     for local in info["local_shards"]:
@@ -440,12 +547,15 @@ def all_replicas(info: dict[str, Any]):
     for remote in info["remote_shards"]:
         yield remote
 
-
 def try_requests(
     peer_uri: str,
     expected_status: int,
     reqs: list[Callable[[str], requests.Response]],
 ):
+    """
+    Execute multiple requests and asserts that all requests return expected status code
+    """
+
     for req in reqs:
         resp = req(peer_uri)
         assert_http(resp, expected_status)
@@ -456,58 +566,3 @@ def assert_http(resp: requests.Response, expected_status: int):
         f"returned an unexpected status code (expected {expected_status}, received {resp.status_code}):\n"
         f"{resp.json()}"
     )
-
-
-def wait_for_one_of_resharding_operation_stages(
-    peer_uri: str, expected_stages: list[str], **kwargs
-):
-    def resharding_operation_stages():
-        requests.post(f"{peer_uri}/collections/{COLLECTION_NAME}/points/scroll")
-
-        info = get_collection_cluster_info(peer_uri, COLLECTION_NAME)
-
-        if "resharding_operations" not in info:
-            return False
-
-        for resharding in info["resharding_operations"]:
-            if not "comment" in resharding:
-                continue
-
-            stage, *_ = resharding["comment"].split(":", maxsplit=1)
-
-            if stage in expected_stages:
-                return True
-
-        return False
-
-    wait_for(resharding_operation_stages, **kwargs)
-
-def wait_for_resharding_shard_transfer_info(
-    peer_uri: str, expected_stage: str | None, expected_method: str
-):
-    if expected_stage is not None:
-        wait_for_collection_resharding_operation_stage(
-            peer_uri, COLLECTION_NAME, expected_stage
-        )
-
-    wait_for_collection_shard_transfer_method(
-        peer_uri, COLLECTION_NAME, expected_method
-    )
-
-    info = get_collection_cluster_info(peer_uri, COLLECTION_NAME)
-    return info["shard_transfers"][0]
-
-def wait_for_resharding_to_finish(peer_uris: list[str], expected_shard_number: int):
-    # Wait for resharding to finish
-    for peer_uri in peer_uris:
-        wait_for_collection_resharding_operations_count(
-            peer_uri,
-            COLLECTION_NAME,
-            0,
-            wait_for_timeout=60,
-        )
-
-    # Check number of shards in the collection
-    for peer_uri in peer_uris:
-        resp = get_collection_cluster_info(peer_uri, COLLECTION_NAME)
-        assert resp["shard_count"] == expected_shard_number
