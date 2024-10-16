@@ -10,9 +10,6 @@ pub struct Shader {
     pub vk_shader_module: vk::ShaderModule,
 }
 
-unsafe impl Send for Shader {}
-unsafe impl Sync for Shader {}
-
 impl Resource for Shader {}
 
 impl Drop for Shader {

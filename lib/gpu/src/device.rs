@@ -20,7 +20,6 @@ pub struct Device {
     pub vk_device: ash::Device,
     pub vk_physical_device: vk::PhysicalDevice,
     pub gpu_allocator: Option<Mutex<Allocator>>,
-    // TODO(gpu): utilize all compute queues
     pub compute_queues: Vec<Queue>,
     pub transfer_queues: Vec<Queue>,
     pub subgroup_size: usize,

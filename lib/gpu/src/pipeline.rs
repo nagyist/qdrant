@@ -4,7 +4,6 @@ use ash::vk;
 
 use crate::*;
 
-#[allow(dead_code)]
 pub struct Pipeline {
     pub(crate) device: Arc<Device>,
     pub(crate) shader: Arc<Shader>,
@@ -12,9 +11,6 @@ pub struct Pipeline {
     pub(crate) vk_pipeline_layout: vk::PipelineLayout,
     pub(crate) vk_pipeline: vk::Pipeline,
 }
-
-unsafe impl Send for Pipeline {}
-unsafe impl Sync for Pipeline {}
 
 impl Resource for Pipeline {}
 
