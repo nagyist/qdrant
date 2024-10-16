@@ -165,7 +165,7 @@ impl Device {
             instance.vk_instance.create_device(
                 vk_physical_device.vk_physical_device,
                 &device_create_info,
-                instance.alloc.as_ref(),
+                instance.allocation_callbacks(),
             )
         };
 
@@ -228,8 +228,8 @@ impl Device {
         }
     }
 
-    pub fn alloc(&self) -> Option<&vk::AllocationCallbacks> {
-        self.instance.alloc.as_ref()
+    pub fn allocation_callbacks(&self) -> Option<&vk::AllocationCallbacks> {
+        self.instance.allocation_callbacks()
     }
 
     pub fn gpu_alloc(&self, allocation_desc: &AllocationCreateDesc) -> GpuResult<Allocation> {
@@ -254,7 +254,7 @@ impl Drop for Device {
         self.gpu_allocator = None;
         unsafe {
             self.vk_device.device_wait_idle().unwrap();
-            self.vk_device.destroy_device(self.alloc());
+            self.vk_device.destroy_device(self.allocation_callbacks());
         }
     }
 }

@@ -59,7 +59,10 @@ impl DescriptorSetLayoutBuilder {
         let vk_descriptor_set_layout = unsafe {
             device
                 .vk_device
-                .create_descriptor_set_layout(&descriptor_set_layout_create_info, device.alloc())
+                .create_descriptor_set_layout(
+                    &descriptor_set_layout_create_info,
+                    device.allocation_callbacks(),
+                )
                 .unwrap()
         };
 
@@ -78,7 +81,7 @@ impl Drop for DescriptorSetLayout {
             if self.vk_descriptor_set_layout != vk::DescriptorSetLayout::null() {
                 self.device.vk_device.destroy_descriptor_set_layout(
                     self.vk_descriptor_set_layout,
-                    self.device.alloc(),
+                    self.device.allocation_callbacks(),
                 );
                 self.vk_descriptor_set_layout = vk::DescriptorSetLayout::null();
             }

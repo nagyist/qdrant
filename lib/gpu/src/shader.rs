@@ -16,9 +16,10 @@ impl Drop for Shader {
     fn drop(&mut self) {
         if self.vk_shader_module != vk::ShaderModule::null() {
             unsafe {
-                self.device
-                    .vk_device
-                    .destroy_shader_module(self.vk_shader_module, self.device.alloc());
+                self.device.vk_device.destroy_shader_module(
+                    self.vk_shader_module,
+                    self.device.allocation_callbacks(),
+                );
             }
             self.vk_shader_module = vk::ShaderModule::null();
         }
@@ -36,7 +37,7 @@ impl Shader {
         let shader_module = unsafe {
             device
                 .vk_device
-                .create_shader_module(&shader_module_create_info, device.alloc())
+                .create_shader_module(&shader_module_create_info, device.allocation_callbacks())
                 .unwrap()
         };
         Self {

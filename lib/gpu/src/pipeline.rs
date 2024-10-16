@@ -6,7 +6,8 @@ use crate::*;
 
 pub struct Pipeline {
     pub(crate) device: Arc<Device>,
-    pub(crate) shader: Arc<Shader>,
+    // keep a reference to the shader to prevent it from being dropped
+    pub(crate) _shader: Arc<Shader>,
     pub(crate) descriptor_set_layouts: Vec<Arc<DescriptorSetLayout>>,
     pub(crate) vk_pipeline_layout: vk::PipelineLayout,
     pub(crate) vk_pipeline: vk::Pipeline,
@@ -20,15 +21,16 @@ impl Drop for Pipeline {
             unsafe {
                 self.device
                     .vk_device
-                    .destroy_pipeline(self.vk_pipeline, self.device.alloc());
+                    .destroy_pipeline(self.vk_pipeline, self.device.allocation_callbacks());
             }
             self.vk_pipeline = vk::Pipeline::null();
         }
         if self.vk_pipeline_layout != vk::PipelineLayout::null() {
             unsafe {
-                self.device
-                    .vk_device
-                    .destroy_pipeline_layout(self.vk_pipeline_layout, self.device.alloc());
+                self.device.vk_device.destroy_pipeline_layout(
+                    self.vk_pipeline_layout,
+                    self.device.allocation_callbacks(),
+                );
             }
             self.vk_pipeline_layout = vk::PipelineLayout::null();
         }
@@ -55,7 +57,10 @@ impl Pipeline {
         let vk_pipeline_layout = unsafe {
             device
                 .vk_device
-                .create_pipeline_layout(&vk_pipeline_layout_create_info, device.alloc())
+                .create_pipeline_layout(
+                    &vk_pipeline_layout_create_info,
+                    device.allocation_callbacks(),
+                )
                 .unwrap()
         };
 
@@ -91,14 +96,14 @@ impl Pipeline {
                 .create_compute_pipelines(
                     vk::PipelineCache::null(),
                     &[vk_compute_pipeline_create_info],
-                    device.alloc(),
+                    device.allocation_callbacks(),
                 )
                 .unwrap()
         };
 
         Self {
             device,
-            shader: builder.shader.clone().unwrap(),
+            _shader: builder.shader.clone().unwrap(),
             vk_pipeline_layout,
             vk_pipeline: vk_pipelines[0],
             descriptor_set_layouts,

@@ -4,13 +4,13 @@ use std::ptr;
 use ash::extensions::ext::DebugUtils;
 use ash::vk;
 
-use crate::DebugMessenger;
+use crate::{AllocationCallbacks, DebugMessenger};
 
 pub struct Instance {
     _entry: ash::Entry,
     pub vk_instance: ash::Instance,
     pub vk_physical_devices: Vec<PhysicalDevice>,
-    pub alloc: Option<vk::AllocationCallbacks>,
+    pub allocation_callbacks: Option<Box<dyn AllocationCallbacks>>,
     pub layers: Vec<String>,
     pub extensions: Vec<String>,
     vk_debug_utils_loader: Option<ash::extensions::ext::DebugUtils>,
@@ -23,9 +23,6 @@ pub struct PhysicalDevice {
     pub name: String,
 }
 
-unsafe impl Send for Instance {}
-unsafe impl Sync for Instance {}
-
 #[derive(Debug)]
 pub enum DeviceError {}
 
@@ -33,6 +30,7 @@ impl Instance {
     pub fn new(
         name: &str,
         debug_messenger: Option<&dyn DebugMessenger>,
+        allocation_callbacks: Option<Box<dyn AllocationCallbacks>>,
         dump_api: bool,
     ) -> Result<Self, DeviceError> {
         unsafe {
@@ -95,23 +93,26 @@ impl Instance {
                 enabled_extension_count: extension_names_raw.len() as u32,
             };
 
-            let alloc = None;
+            let vk_allocation_callbacks = allocation_callbacks
+                .as_ref()
+                .map(|a| a.allocation_callbacks());
             let vk_instance: ash::Instance = entry
-                .create_instance(&create_info, alloc.as_ref())
+                .create_instance(&create_info, vk_allocation_callbacks)
                 .expect("Failed to create instance!");
 
-            let (vk_debug_utils_loader, vk_debug_messenger) =
-                if let Some(debug_messenger) = debug_messenger {
-                    let debug_utils_loader =
-                        ash::extensions::ext::DebugUtils::new(&entry, &vk_instance);
-                    let messenger_create_info = Self::debug_messenger_create_info(debug_messenger);
-                    let utils_messenger = debug_utils_loader
-                        .create_debug_utils_messenger(&messenger_create_info, alloc.as_ref())
-                        .expect("Debug Utils Callback");
-                    (Some(debug_utils_loader), utils_messenger)
-                } else {
-                    (None, vk::DebugUtilsMessengerEXT::null())
-                };
+            let (vk_debug_utils_loader, vk_debug_messenger) = if let Some(debug_messenger) =
+                debug_messenger
+            {
+                let debug_utils_loader =
+                    ash::extensions::ext::DebugUtils::new(&entry, &vk_instance);
+                let messenger_create_info = Self::debug_messenger_create_info(debug_messenger);
+                let utils_messenger = debug_utils_loader
+                    .create_debug_utils_messenger(&messenger_create_info, vk_allocation_callbacks)
+                    .expect("Debug Utils Callback");
+                (Some(debug_utils_loader), utils_messenger)
+            } else {
+                (None, vk::DebugUtilsMessengerEXT::null())
+            };
 
             let vk_physical_devices = vk_instance.enumerate_physical_devices().unwrap();
             let vk_physical_devices = vk_physical_devices
@@ -142,7 +143,7 @@ impl Instance {
                 _entry: entry,
                 vk_instance,
                 vk_physical_devices,
-                alloc,
+                allocation_callbacks,
                 layers,
                 extensions,
                 vk_debug_utils_loader,
@@ -167,6 +168,12 @@ impl Instance {
 
     pub fn is_validation_enable(&self) -> bool {
         self.vk_debug_utils_loader.is_some()
+    }
+
+    pub fn allocation_callbacks(&self) -> Option<&vk::AllocationCallbacks> {
+        self.allocation_callbacks
+            .as_ref()
+            .map(|alloc| alloc.allocation_callbacks())
     }
 
     fn get_layers_list(validation: bool, dump_api: bool) -> Vec<String> {
@@ -207,16 +214,17 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        let allocation_callbacks = self.allocation_callbacks();
         unsafe {
             if let Some(loader) = &self.vk_debug_utils_loader {
                 if self.vk_debug_messenger != vk::DebugUtilsMessengerEXT::null() {
                     loader.destroy_debug_utils_messenger(
                         self.vk_debug_messenger,
-                        self.alloc.as_ref(),
+                        allocation_callbacks,
                     );
                 }
             }
-            self.vk_instance.destroy_instance(self.alloc.as_ref());
+            self.vk_instance.destroy_instance(allocation_callbacks);
         }
     }
 }

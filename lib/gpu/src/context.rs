@@ -21,7 +21,7 @@ impl Drop for Context {
             unsafe {
                 self.device
                     .vk_device
-                    .destroy_fence(self.vk_fence, self.device.alloc());
+                    .destroy_fence(self.vk_fence, self.device.allocation_callbacks());
             }
             self.vk_fence = vk::Fence::null();
         }
@@ -29,7 +29,7 @@ impl Drop for Context {
             unsafe {
                 self.device
                     .vk_device
-                    .destroy_command_pool(self.vk_command_pool, self.device.alloc());
+                    .destroy_command_pool(self.vk_command_pool, self.device.allocation_callbacks());
             }
             self.vk_command_pool = vk::CommandPool::null();
         }
@@ -50,7 +50,7 @@ impl Context {
             vk_command_pool = unsafe {
                 device
                     .vk_device
-                    .create_command_pool(&command_pool_create_info, device.alloc())
+                    .create_command_pool(&command_pool_create_info, device.allocation_callbacks())
                     .unwrap()
             };
 
@@ -59,7 +59,7 @@ impl Context {
             vk_fence = unsafe {
                 device
                     .vk_device
-                    .create_fence(&fence_create_info, device.alloc())
+                    .create_fence(&fence_create_info, device.allocation_callbacks())
                     .unwrap()
             };
         }

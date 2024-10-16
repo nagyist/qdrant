@@ -48,9 +48,10 @@ impl Drop for DescriptorSet {
     fn drop(&mut self) {
         unsafe {
             if self.vk_descriptor_pool != vk::DescriptorPool::null() {
-                self.device
-                    .vk_device
-                    .destroy_descriptor_pool(self.vk_descriptor_pool, self.device.alloc());
+                self.device.vk_device.destroy_descriptor_pool(
+                    self.vk_descriptor_pool,
+                    self.device.allocation_callbacks(),
+                );
                 self.vk_descriptor_pool = vk::DescriptorPool::null()
             }
         }
@@ -123,7 +124,10 @@ impl DescriptorSet {
             unsafe {
                 device
                     .vk_device
-                    .create_descriptor_pool(&vk_descriptor_pool_create_info, device.alloc())
+                    .create_descriptor_pool(
+                        &vk_descriptor_pool_create_info,
+                        device.allocation_callbacks(),
+                    )
                     .unwrap()
             }
         } else {

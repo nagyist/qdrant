@@ -39,7 +39,7 @@ impl Drop for Buffer {
         unsafe {
             self.device
                 .vk_device
-                .destroy_buffer(self.vk_buffer, self.device.alloc())
+                .destroy_buffer(self.vk_buffer, self.device.allocation_callbacks())
         };
         self.size = 0;
         self.vk_buffer = vk::Buffer::null();
@@ -87,7 +87,9 @@ impl Buffer {
                 Ok(allocation) => allocation,
                 Err(e) => {
                     unsafe {
-                        device.vk_device.destroy_buffer(vk_buffer, device.alloc());
+                        device
+                            .vk_device
+                            .destroy_buffer(vk_buffer, device.allocation_callbacks());
                     }
                     return Err(e);
                 }
