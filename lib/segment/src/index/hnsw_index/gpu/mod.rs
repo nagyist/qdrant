@@ -42,7 +42,7 @@ static GPU_PARALLEL_INDEXES: AtomicUsize = AtomicUsize::new(0);
 
 fn create_gpu_instance() -> OperationResult<Arc<gpu::Instance>> {
     Ok(Arc::new(
-        gpu::Instance::new("qdrant", None, false).map_err(|e| {
+        gpu::Instance::new("qdrant", None, None, false).map_err(|e| {
             OperationError::service_error(format!("Failed to create GPU instance: {:?}", e))
         })?,
     ))

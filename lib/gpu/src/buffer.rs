@@ -1,5 +1,3 @@
-use std::ffi::c_void;
-use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
 use ash::vk;
@@ -21,20 +19,16 @@ pub struct Buffer {
     pub vk_buffer: vk::Buffer,
     pub buffer_type: BufferType,
     pub size: usize,
-    pub allocation: Allocation,
-    pub upload_mapped_ptr: Option<Mutex<NonNull<c_void>>>,
+    pub allocation: Mutex<Allocation>,
 }
-
-unsafe impl Send for Buffer {}
-unsafe impl Sync for Buffer {}
 
 impl Resource for Buffer {}
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        self.upload_mapped_ptr = None;
-        let mut allocation = Allocation::default();
+        let mut allocation = Mutex::new(Allocation::default());
         std::mem::swap(&mut allocation, &mut self.allocation);
+        let allocation = allocation.into_inner().unwrap();
         self.device.gpu_free(allocation);
         unsafe {
             self.device
@@ -103,19 +97,12 @@ impl Buffer {
             };
         }
 
-        let upload_mapped_ptr = if buffer_type == BufferType::CpuToGpu {
-            Some(Mutex::new(allocation.mapped_ptr().unwrap()))
-        } else {
-            None
-        };
-
         Ok(Self {
             device,
             vk_buffer,
             buffer_type,
             size,
-            allocation,
-            upload_mapped_ptr,
+            allocation: Mutex::new(allocation),
         })
     }
 
@@ -150,8 +137,10 @@ impl Buffer {
             panic!("Download works only for buffers with GpuToCpu type");
         }
         unsafe {
-            let slice = self.allocation.mapped_slice().unwrap();
+            let allocation = self.allocation.lock().unwrap();
+            let slice = allocation.mapped_slice().unwrap();
             let ptr = slice.as_ptr().add(offset);
+            // TODD(gpu): check ranges
             std::ptr::copy(ptr, data.as_mut_ptr(), data.len());
         }
     }
@@ -168,20 +157,20 @@ impl Buffer {
 
     pub fn upload_slice<T: Sized>(&self, data: &[T], offset: usize) {
         unsafe {
-            let mapped_ptr = self.upload_mapped_ptr.as_ref().unwrap().lock().unwrap();
-            let slice: &mut [u8] =
-                std::slice::from_raw_parts_mut(mapped_ptr.cast().as_ptr(), self.size);
+            let mut allocation = self.allocation.lock().unwrap();
+            let slice = allocation.mapped_slice_mut().unwrap();
             let ptr = slice.as_mut_ptr().add(offset);
+            // TODD(gpu): check ranges
             std::ptr::copy(data.as_ptr() as *const u8, ptr, std::mem::size_of_val(data));
         }
     }
 
     pub fn upload_bytes(&self, data: &[u8], offset: usize) {
         unsafe {
-            let mapped_ptr = self.upload_mapped_ptr.as_ref().unwrap().lock().unwrap();
-            let slice: &mut [u8] =
-                std::slice::from_raw_parts_mut(mapped_ptr.cast().as_ptr(), self.size);
+            let mut allocation = self.allocation.lock().unwrap();
+            let slice = allocation.mapped_slice_mut().unwrap();
             let ptr = slice.as_mut_ptr().add(offset);
+            // TODD(gpu): check ranges
             std::ptr::copy(data.as_ptr(), ptr, data.len());
         }
     }
