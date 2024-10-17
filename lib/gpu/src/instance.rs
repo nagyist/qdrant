@@ -4,7 +4,7 @@ use std::ptr;
 use ash::extensions::ext::DebugUtils;
 use ash::vk;
 
-use crate::{AllocationCallbacks, DebugMessenger};
+use crate::*;
 
 pub struct Instance {
     _entry: ash::Entry,
@@ -23,16 +23,13 @@ pub struct PhysicalDevice {
     pub name: String,
 }
 
-#[derive(Debug)]
-pub enum DeviceError {}
-
 impl Instance {
     pub fn new(
         name: &str,
         debug_messenger: Option<&dyn DebugMessenger>,
         allocation_callbacks: Option<Box<dyn AllocationCallbacks>>,
         dump_api: bool,
-    ) -> Result<Self, DeviceError> {
+    ) -> GpuResult<Self> {
         unsafe {
             let entry = ash::Entry::load().unwrap();
             let app_name = CString::new(name).unwrap();

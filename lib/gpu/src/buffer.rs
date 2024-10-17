@@ -6,8 +6,8 @@ use gpu_allocator::MemoryLocation;
 
 use crate::*;
 
-static DOWNLOAD_NOT_ALLOWED_ERROR: &str = "Download works only for buffers with GpuToCpu type";
-static UPLOAD_NOT_ALLOWED_ERROR: &str = "Upload works only for buffers with CpuToGpu type";
+static DOWNLOAD_NOT_ALLOWED_ERROR: &str = "Download from the GPU buffer is not allowed";
+static UPLOAD_NOT_ALLOWED_ERROR: &str = "Upload to the GPU buffer is not allowed";
 
 /// Buffer is a GPU resource that represents a linear memory region.
 pub struct Buffer {
@@ -48,7 +48,7 @@ impl Resource for Buffer {}
 
 impl Buffer {
     pub fn new(
-        device: Arc<Device>,   // Device that owns the buffer.
+        device: Arc<Device>, // Device that owns the buffer.
         name: impl AsRef<str>, // Name of the buffer for tracking and debugging purposes.
         buffer_type: BufferType,
         size: usize,
@@ -141,13 +141,13 @@ impl Buffer {
             return Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        unsafe {
-            let bytes = std::slice::from_raw_parts_mut(
+        let bytes = unsafe {
+            std::slice::from_raw_parts_mut(
                 (data as *mut T) as *mut u8,
                 std::mem::size_of::<T>(),
-            );
-            self.download_bytes(bytes, offset)
-        }
+            )
+        };
+        self.download_bytes(bytes, offset)
     }
 
     /// Download data from the buffer to the RAM.
@@ -156,13 +156,14 @@ impl Buffer {
             return Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        unsafe {
-            let bytes = std::slice::from_raw_parts_mut(
+        let bytes = unsafe {
+            std::slice::from_raw_parts_mut(
                 (data.as_ptr() as *mut T) as *mut u8,
                 std::mem::size_of_val(data),
-            );
-            self.download_bytes(bytes, offset)
-        }
+            )
+        };
+
+        self.download_bytes(bytes, offset)
     }
 
     /// Download data from the buffer to the RAM.
@@ -171,13 +172,22 @@ impl Buffer {
             return Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        unsafe {
-            let allocation = self.allocation.lock().unwrap();
-            let slice = allocation.mapped_slice().unwrap();
-            let ptr = slice.as_ptr().add(offset);
-            // TODD(gpu): check ranges
-            std::ptr::copy(ptr, data.as_mut_ptr(), data.len());
+        if data.len() + offset > self.size {
+            return Err(GpuError::OutOfBounds("Out of bounds while dowloading from GPU".to_string()));
+        }
+
+        let allocation = self.allocation.lock().unwrap();
+        if let Some(slice) = allocation.mapped_slice() {
+            unsafe {
+                std::ptr::copy(
+                    slice.as_ptr().add(offset),
+                    data.as_mut_ptr(),
+                    data.len(),
+                );
+            }
             Ok(())
+        } else {
+            Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()))
         }
     }
 
@@ -187,13 +197,14 @@ impl Buffer {
             return Err(GpuError::Other(UPLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        unsafe {
-            let bytes = std::slice::from_raw_parts(
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
                 (data as *const T) as *const u8,
                 std::mem::size_of::<T>(),
-            );
-            self.upload_bytes(bytes, offset)
-        }
+            )
+        };
+
+        self.upload_bytes(bytes, offset)
     }
 
     /// Upload data from the RAM to the buffer.
@@ -202,14 +213,14 @@ impl Buffer {
             return Err(GpuError::Other(UPLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        unsafe {
-            let mut allocation = self.allocation.lock().unwrap();
-            let slice = allocation.mapped_slice_mut().unwrap();
-            let ptr = slice.as_mut_ptr().add(offset);
-            // TODD(gpu): check ranges
-            std::ptr::copy(data.as_ptr() as *const u8, ptr, std::mem::size_of_val(data));
-            Ok(())
-        }
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                (data.as_ptr() as *mut T) as *mut u8,
+                std::mem::size_of_val(data),
+            )
+        };
+
+        self.upload_bytes(bytes, offset)
     }
 
     /// Upload data from the RAM to the buffer.
@@ -218,12 +229,19 @@ impl Buffer {
             return Err(GpuError::Other(UPLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
+        if data.len() + offset > self.size {
+            return Err(GpuError::OutOfBounds("Out of bounds while uploading to GPU".to_string()));
+        }
+
+        let mut allocation = self.allocation.lock().unwrap();
+        let slice = allocation.mapped_slice_mut().unwrap();
+
         unsafe {
-            let mut allocation = self.allocation.lock().unwrap();
-            let slice = allocation.mapped_slice_mut().unwrap();
-            let ptr = slice.as_mut_ptr().add(offset);
-            // TODD(gpu): check ranges
-            std::ptr::copy(data.as_ptr(), ptr, data.len());
+            std::ptr::copy(
+                data.as_ptr(),
+                slice.as_mut_ptr().add(offset),
+                data.len(),
+            );
             Ok(())
         }
     }

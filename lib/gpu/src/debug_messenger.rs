@@ -3,6 +3,10 @@ use std::os::raw::c_void;
 
 use ash::vk;
 
+/// Trait for debug messenger.
+/// Debug messenger is used to handle Vulkan debug messages.
+/// If presented, vulkan instance will be created with validation layers and debug messenger.
+/// Validation layer has a large performance cost, so it should be used only for tests and debugging.
 pub trait DebugMessenger {
     fn get_callback(&self) -> vk::PFN_vkDebugUtilsMessengerCallbackEXT;
 
@@ -11,6 +15,7 @@ pub trait DebugMessenger {
     fn get_message_type_flags(&self) -> vk::DebugUtilsMessageTypeFlagsEXT;
 }
 
+/// Log all messages from the Vulkan validation layer.
 pub struct LogAllMessenger {}
 
 impl DebugMessenger for LogAllMessenger {
@@ -63,6 +68,7 @@ unsafe extern "system" fn vulkan_debug_callback_log(
     vk::FALSE
 }
 
+/// Panic if some message from the Vulkan validation layer.
 pub struct PanicIfErrorMessenger {}
 
 impl DebugMessenger for PanicIfErrorMessenger {
