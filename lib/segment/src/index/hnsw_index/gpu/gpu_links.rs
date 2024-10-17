@@ -3,6 +3,7 @@ use std::sync::Arc;
 use common::types::PointOffsetType;
 
 use crate::common::operation_error::{OperationError, OperationResult};
+use crate::index::hnsw_index::gpu::GPU_TIMEOUT;
 use crate::index::hnsw_index::graph_layers::GraphLayersBase;
 use crate::index::hnsw_index::graph_layers_builder::GraphLayersBuilder;
 
@@ -34,29 +35,32 @@ impl GpuLinks {
         points_count: usize,
         max_patched_points: usize,
     ) -> gpu::GpuResult<Self> {
-        let links_buffer = Arc::new(gpu::Buffer::new(
+        let links_buffer = gpu::Buffer::new(
             device.clone(),
+            "Links buffer",
             gpu::BufferType::Storage,
             points_count * (links_capacity + 1) * std::mem::size_of::<PointOffsetType>(),
-        )?);
-        let params_buffer = Arc::new(gpu::Buffer::new(
+        )?;
+        let params_buffer = gpu::Buffer::new(
             device.clone(),
+            "Links params buffer",
             gpu::BufferType::Uniform,
             std::mem::size_of::<GpuLinksParamsBuffer>(),
-        )?);
+        )?;
         let links_patch_capacity =
             max_patched_points * (links_capacity + 1) * std::mem::size_of::<PointOffsetType>();
-        let patch_buffer = Arc::new(gpu::Buffer::new(
+        let patch_buffer = gpu::Buffer::new(
             device.clone(),
+            "Links patch buffer",
             gpu::BufferType::CpuToGpu,
             links_patch_capacity + std::mem::size_of::<GpuLinksParamsBuffer>(),
-        )?);
+        )?;
 
         let params = GpuLinksParamsBuffer {
             m: m as u32,
             links_capacity: links_capacity as u32,
         };
-        patch_buffer.upload(&params, 0);
+        patch_buffer.upload(&params, 0)?;
 
         let mut upload_context = gpu::Context::new(device.clone());
         upload_context.copy_gpu_buffer(
@@ -68,7 +72,7 @@ impl GpuLinks {
         );
         upload_context.clear_buffer(links_buffer.clone());
         upload_context.run();
-        upload_context.wait_finish();
+        upload_context.wait_finish(GPU_TIMEOUT);
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
@@ -95,7 +99,7 @@ impl GpuLinks {
         })
     }
 
-    pub fn update_params(&mut self, context: &mut gpu::Context, m: usize) {
+    pub fn update_params(&mut self, context: &mut gpu::Context, m: usize) -> OperationResult<()> {
         self.m = m;
 
         let params = GpuLinksParamsBuffer {
@@ -105,7 +109,7 @@ impl GpuLinks {
         let links_patch_capacity = self.max_patched_points
             * (self.links_capacity + 1)
             * std::mem::size_of::<PointOffsetType>();
-        self.patch_buffer.upload(&params, links_patch_capacity);
+        self.patch_buffer.upload(&params, links_patch_capacity)?;
 
         context.copy_gpu_buffer(
             self.patch_buffer.clone(),
@@ -114,6 +118,7 @@ impl GpuLinks {
             0,
             std::mem::size_of::<GpuLinksParamsBuffer>(),
         );
+        Ok(())
     }
 
     pub fn clear(&mut self, gpu_context: &mut gpu::Context) -> OperationResult<()> {
@@ -157,9 +162,9 @@ impl GpuLinks {
             * (self.links_capacity + 1)
             * std::mem::size_of::<PointOffsetType>();
         self.patch_buffer
-            .upload(&(links.len() as u32), patch_start_index);
+            .upload(&(links.len() as u32), patch_start_index)?;
         patch_start_index += std::mem::size_of::<PointOffsetType>();
-        self.patch_buffer.upload_slice(links, patch_start_index);
+        self.patch_buffer.upload_slice(links, patch_start_index)?;
         self.patched_points.push((point_id, links.len()));
 
         Ok(())
@@ -171,10 +176,10 @@ impl GpuLinks {
         graph_layers_builder: &GraphLayersBuilder,
         context: &mut gpu::Context,
     ) -> OperationResult<()> {
-        self.update_params(context, graph_layers_builder.get_m(level));
+        self.update_params(context, graph_layers_builder.get_m(level))?;
         self.clear(context)?;
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
         let timer = std::time::Instant::now();
         let points: Vec<_> = (0..graph_layers_builder.links_layers.len())
@@ -195,7 +200,7 @@ impl GpuLinks {
             }
             self.apply_gpu_patches(context);
             context.run();
-            context.wait_finish();
+            context.wait_finish(GPU_TIMEOUT);
         }
 
         log::trace!("Upload links on level {level} time: {:?}", timer.elapsed());
@@ -213,14 +218,13 @@ impl GpuLinks {
         let links_patch_capacity = self.max_patched_points
             * (self.links_capacity + 1)
             * std::mem::size_of::<PointOffsetType>();
-        let download_buffer = Arc::new(
-            gpu::Buffer::new(
-                self.device.clone(),
-                gpu::BufferType::GpuToCpu,
-                links_patch_capacity,
-            )
-            .unwrap(),
-        );
+        let download_buffer = gpu::Buffer::new(
+            self.device.clone(),
+            "Download links staging buffer",
+            gpu::BufferType::GpuToCpu,
+            links_patch_capacity,
+        )
+        .unwrap();
 
         let points = (0..graph_layers_builder.links_layers.len() as PointOffsetType)
             .filter(|&point_id| graph_layers_builder.get_point_level(point_id) >= level)
@@ -241,11 +245,11 @@ impl GpuLinks {
                 );
             }
             context.run();
-            context.wait_finish();
+            context.wait_finish(GPU_TIMEOUT);
 
             let mut links =
                 vec![PointOffsetType::default(); chunk_size * (self.links_capacity + 1)];
-            download_buffer.download_slice(&mut links, 0);
+            download_buffer.download_slice(&mut links, 0)?;
 
             for (index, chunk) in links.chunks(self.links_capacity + 1).enumerate() {
                 let point_id = points[start + index] as usize;

@@ -21,6 +21,7 @@ pub struct DescriptorSet {
     pub vk_descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
 }
 
+// Mark `DescriptorSet` as a GPU resource that should be kept alive while it's in use by the GPU context.
 impl Resource for DescriptorSet {}
 
 impl DescriptorBuilder {

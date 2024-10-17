@@ -1,5 +1,8 @@
 use std::sync::Arc;
 
+use super::GPU_TIMEOUT;
+use crate::common::operation_error::OperationResult;
+
 #[repr(C)]
 pub struct GpuVisitedFlagsParamsBuffer {
     pub generation: u32,
@@ -21,28 +24,31 @@ impl GpuVisitedFlags {
         device: Arc<gpu::Device>,
         groups_count: usize,
         points_count: usize,
-    ) -> gpu::GpuResult<Self> {
+    ) -> OperationResult<Self> {
         let alignment = std::mem::size_of::<u32>();
         let points_count = points_count.div_ceil(alignment) * alignment;
 
-        let params_buffer = Arc::new(gpu::Buffer::new(
+        let params_buffer = gpu::Buffer::new(
             device.clone(),
+            "Visited flags params buffer",
             gpu::BufferType::Uniform,
             std::mem::size_of::<GpuVisitedFlagsParamsBuffer>(),
-        )?);
-        let params_staging_buffer = Arc::new(gpu::Buffer::new(
+        )?;
+        let params_staging_buffer = gpu::Buffer::new(
             device.clone(),
+            "Visited flags params staging buffer",
             gpu::BufferType::CpuToGpu,
             std::mem::size_of::<GpuVisitedFlagsParamsBuffer>(),
-        )?);
-        let visited_flags_buffer = Arc::new(gpu::Buffer::new(
+        )?;
+        let visited_flags_buffer = gpu::Buffer::new(
             device.clone(),
+            "Visited flags buffer",
             gpu::BufferType::Storage,
             groups_count * points_count * std::mem::size_of::<u8>(),
-        )?);
+        )?;
 
         let params = GpuVisitedFlagsParamsBuffer { generation: 1 };
-        params_staging_buffer.upload(&params, 0);
+        params_staging_buffer.upload(&params, 0)?;
 
         let mut upload_context = gpu::Context::new(device.clone());
         upload_context.copy_gpu_buffer(
@@ -53,7 +59,7 @@ impl GpuVisitedFlags {
             std::mem::size_of::<GpuVisitedFlagsParamsBuffer>(),
         );
         upload_context.run();
-        upload_context.wait_finish();
+        upload_context.wait_finish(GPU_TIMEOUT);
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
@@ -77,7 +83,7 @@ impl GpuVisitedFlags {
         })
     }
 
-    pub fn clear(&mut self, gpu_context: &mut gpu::Context) {
+    pub fn clear(&mut self, gpu_context: &mut gpu::Context) -> OperationResult<()> {
         if self.params.generation == 255 {
             self.params.generation = 1;
             gpu_context.clear_buffer(self.visited_flags_buffer.clone());
@@ -85,7 +91,7 @@ impl GpuVisitedFlags {
             self.params.generation += 1;
         }
 
-        self.params_staging_buffer.upload(&self.params, 0);
+        self.params_staging_buffer.upload(&self.params, 0)?;
         gpu_context.copy_gpu_buffer(
             self.params_staging_buffer.clone(),
             self.params_buffer.clone(),
@@ -93,5 +99,6 @@ impl GpuVisitedFlags {
             0,
             self.params_buffer.size,
         );
+        Ok(())
     }
 }

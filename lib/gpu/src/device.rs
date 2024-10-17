@@ -236,7 +236,7 @@ impl Device {
         let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock().unwrap();
         gpu_allocator
             .allocate(allocation_desc)
-            .map_err(GpuError::AllocationError)
+            .map_err(GpuError::from)
     }
 
     pub fn gpu_free(&self, allocation: Allocation) {

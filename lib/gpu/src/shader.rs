@@ -10,6 +10,7 @@ pub struct Shader {
     pub vk_shader_module: vk::ShaderModule,
 }
 
+// Mark `Shader` as a GPU resource that should be kept alive while it's in use by the GPU context.
 impl Resource for Shader {}
 
 impl Drop for Shader {

@@ -27,6 +27,7 @@ mod tests {
 
     use super::*;
     use crate::index::hnsw_index::gpu::shader_builder::ShaderBuilder;
+    use crate::index::hnsw_index::gpu::GPU_TIMEOUT;
 
     #[repr(C)]
     struct TestParams {
@@ -68,24 +69,22 @@ mod tests {
             .with_nearest_heap_ef(gpu_nearest_heap.ef)
             .build();
 
-        let input_points_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
-            )
-            .unwrap(),
-        );
+        let input_points_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Nearest heap input points buffer",
+            gpu::BufferType::Storage,
+            inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
+        )
+        .unwrap();
 
-        let upload_staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::CpuToGpu,
-                inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
-            )
-            .unwrap(),
-        );
-        upload_staging_buffer.upload_slice(&inputs_data, 0);
+        let upload_staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Nearest heap upload staging buffer",
+            gpu::BufferType::CpuToGpu,
+            inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
+        )
+        .unwrap();
+        upload_staging_buffer.upload_slice(&inputs_data, 0).unwrap();
 
         let mut context = gpu::Context::new(device.clone());
         context.copy_gpu_buffer(
@@ -96,22 +95,23 @@ mod tests {
             input_points_buffer.size,
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
-        let test_params_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Uniform,
-                std::mem::size_of::<TestParams>(),
+        let test_params_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Nearest heap test params buffer",
+            gpu::BufferType::Uniform,
+            std::mem::size_of::<TestParams>(),
+        )
+        .unwrap();
+        upload_staging_buffer
+            .upload(
+                &TestParams {
+                    input_counts: inputs_count as u32,
+                },
+                0,
             )
-            .unwrap(),
-        );
-        upload_staging_buffer.upload(
-            &TestParams {
-                input_counts: inputs_count as u32,
-            },
-            0,
-        );
+            .unwrap();
         context.copy_gpu_buffer(
             upload_staging_buffer,
             test_params_buffer.clone(),
@@ -120,24 +120,22 @@ mod tests {
             test_params_buffer.size,
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
-        let scores_output_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                inputs_count * groups_count * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
-        let sorted_output_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                ef * groups_count * std::mem::size_of::<PointOffsetType>(),
-            )
-            .unwrap(),
-        );
+        let scores_output_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Nearest heap scores output buffer",
+            gpu::BufferType::Storage,
+            inputs_count * groups_count * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
+        let sorted_output_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Nearest heap sorted output buffer",
+            gpu::BufferType::Storage,
+            ef * groups_count * std::mem::size_of::<PointOffsetType>(),
+        )
+        .unwrap();
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
@@ -161,16 +159,15 @@ mod tests {
         context.bind_pipeline(pipeline, &[descriptor_set.clone()]);
         context.dispatch(groups_count, 1, 1);
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
-        let download_staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::GpuToCpu,
-                std::cmp::max(scores_output_buffer.size, sorted_output_buffer.size),
-            )
-            .unwrap(),
-        );
+        let download_staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Nearest heap download staging buffer",
+            gpu::BufferType::GpuToCpu,
+            std::cmp::max(scores_output_buffer.size, sorted_output_buffer.size),
+        )
+        .unwrap();
         context.copy_gpu_buffer(
             scores_output_buffer.clone(),
             download_staging_buffer.clone(),
@@ -179,9 +176,11 @@ mod tests {
             scores_output_buffer.size,
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
         let mut scores_output = vec![0.0; inputs_count * groups_count];
-        download_staging_buffer.download_slice(&mut scores_output, 0);
+        download_staging_buffer
+            .download_slice(&mut scores_output, 0)
+            .unwrap();
 
         let mut scores_output_cpu = vec![0.0; inputs_count * groups_count];
         let mut sorted_output_cpu = vec![PointOffsetType::default(); ef * groups_count];
@@ -208,8 +207,10 @@ mod tests {
             nearest_gpu.len() * std::mem::size_of::<PointOffsetType>(),
         );
         context.run();
-        context.wait_finish();
-        download_staging_buffer.download_slice(nearest_gpu.as_mut_slice(), 0);
+        context.wait_finish(GPU_TIMEOUT);
+        download_staging_buffer
+            .download_slice(nearest_gpu.as_mut_slice(), 0)
+            .unwrap();
 
         let mut sorted_output_gpu = Vec::new();
         for group in 0..groups_count {

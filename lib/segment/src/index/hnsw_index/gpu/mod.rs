@@ -30,6 +30,8 @@ lazy_static! {
     pub static ref GPU_DEVICES_MANAGER: OperationResult<DevicesMaganer> = init_devices_manager();
 }
 
+static GPU_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
 static GPU_INDEXING: AtomicBool = AtomicBool::new(false);
 static GPU_WAIT_FREE: AtomicBool = AtomicBool::new(true);
 static GPU_FORCE_HALF_PRECISION: AtomicBool = AtomicBool::new(false);

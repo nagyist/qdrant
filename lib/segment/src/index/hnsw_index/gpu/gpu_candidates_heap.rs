@@ -25,6 +25,7 @@ mod tests {
 
     use super::*;
     use crate::index::hnsw_index::gpu::shader_builder::ShaderBuilder;
+    use crate::index::hnsw_index::gpu::GPU_TIMEOUT;
 
     #[repr(C)]
     struct TestParams {
@@ -65,24 +66,22 @@ mod tests {
             .with_candidates_heap_capacity(gpu_candidates_heap.capacity)
             .build();
 
-        let input_points_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
-            )
-            .unwrap(),
-        );
+        let input_points_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Input points buffer",
+            gpu::BufferType::Storage,
+            inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
+        )
+        .unwrap();
 
-        let upload_staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::CpuToGpu,
-                inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
-            )
-            .unwrap(),
-        );
-        upload_staging_buffer.upload_slice(&inputs_data, 0);
+        let upload_staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Candidates heap upload staging buffer",
+            gpu::BufferType::CpuToGpu,
+            inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
+        )
+        .unwrap();
+        upload_staging_buffer.upload_slice(&inputs_data, 0).unwrap();
 
         let mut context = gpu::Context::new(device.clone());
         context.copy_gpu_buffer(
@@ -93,22 +92,23 @@ mod tests {
             input_points_buffer.size,
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
-        let test_params_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Uniform,
-                std::mem::size_of::<TestParams>(),
+        let test_params_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Test params buffer",
+            gpu::BufferType::Uniform,
+            std::mem::size_of::<TestParams>(),
+        )
+        .unwrap();
+        upload_staging_buffer
+            .upload(
+                &TestParams {
+                    input_counts: inputs_count as u32,
+                },
+                0,
             )
-            .unwrap(),
-        );
-        upload_staging_buffer.upload(
-            &TestParams {
-                input_counts: inputs_count as u32,
-            },
-            0,
-        );
+            .unwrap();
         context.copy_gpu_buffer(
             upload_staging_buffer,
             test_params_buffer.clone(),
@@ -117,16 +117,15 @@ mod tests {
             test_params_buffer.size,
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
-        let scores_output_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
-            )
-            .unwrap(),
-        );
+        let scores_output_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores output buffer",
+            gpu::BufferType::Storage,
+            inputs_count * groups_count * std::mem::size_of::<ScoredPointOffset>(),
+        )
+        .unwrap();
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
@@ -148,7 +147,7 @@ mod tests {
         context.bind_pipeline(pipeline, &[descriptor_set.clone()]);
         context.dispatch(groups_count, 1, 1);
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
         let mut scores_cpu = vec![];
         for group in 0..groups_count {
@@ -162,14 +161,13 @@ mod tests {
             }
         }
 
-        let download_staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::GpuToCpu,
-                scores_output_buffer.size,
-            )
-            .unwrap(),
-        );
+        let download_staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Candidates heap download staging buffer",
+            gpu::BufferType::GpuToCpu,
+            scores_output_buffer.size,
+        )
+        .unwrap();
         context.copy_gpu_buffer(
             scores_output_buffer.clone(),
             download_staging_buffer.clone(),
@@ -178,9 +176,11 @@ mod tests {
             scores_output_buffer.size,
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
         let mut scores_gpu = vec![ScoredPointOffset::default(); inputs_count * groups_count];
-        download_staging_buffer.download_slice(&mut scores_gpu, 0);
+        download_staging_buffer
+            .download_slice(&mut scores_gpu, 0)
+            .unwrap();
 
         assert_eq!(scores_gpu, scores_cpu);
     }

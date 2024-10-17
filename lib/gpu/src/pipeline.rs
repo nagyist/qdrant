@@ -13,6 +13,7 @@ pub struct Pipeline {
     pub(crate) vk_pipeline: vk::Pipeline,
 }
 
+// Mark `Pipeline` as a GPU resource that should be kept alive while it's in use by the GPU context.
 impl Resource for Pipeline {}
 
 impl Drop for Pipeline {

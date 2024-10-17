@@ -4,6 +4,8 @@ use ash::vk;
 
 use crate::*;
 
+static DROP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 pub struct Context {
     pub device: Arc<Device>,
     pub vk_queue: vk::Queue,
@@ -16,7 +18,7 @@ pub struct Context {
 
 impl Drop for Context {
     fn drop(&mut self) {
-        self.wait_finish();
+        self.wait_finish(DROP_TIMEOUT);
         if self.vk_fence != vk::Fence::null() {
             unsafe {
                 self.device
@@ -208,7 +210,7 @@ impl Context {
         }
     }
 
-    pub fn wait_finish(&mut self) {
+    pub fn wait_finish(&mut self, timeout: std::time::Duration) {
         if self.vk_command_buffer == vk::CommandBuffer::null() {
             return;
         }
@@ -216,7 +218,7 @@ impl Context {
         unsafe {
             self.device
                 .vk_device
-                .wait_for_fences(&[self.vk_fence], true, u64::MAX)
+                .wait_for_fences(&[self.vk_fence], true, timeout.as_nanos() as u64)
                 .unwrap();
             self.device
                 .vk_device

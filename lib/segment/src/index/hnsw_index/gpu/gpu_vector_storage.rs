@@ -4,8 +4,10 @@ use std::sync::Arc;
 use common::types::PointOffsetType;
 use quantization::{EncodedStorage, EncodedVectorsPQ, EncodedVectorsU8};
 
+use crate::common::operation_error::{OperationError, OperationResult};
 use crate::data_types::primitive::PrimitiveVectorElement;
 use crate::data_types::vectors::{VectorElementType, VectorElementTypeByte, VectorElementTypeHalf};
+use crate::index::hnsw_index::gpu::GPU_TIMEOUT;
 use crate::types::Distance;
 use crate::vector_storage::quantized::quantized_vectors::{
     QuantizedVectorStorage, QuantizedVectors,
@@ -61,7 +63,7 @@ impl GpuVectorStorage {
         vector_storage: &VectorStorageEnum,
         quantized_storage: Option<&QuantizedVectors>,
         force_half_precision: bool,
-    ) -> gpu::GpuResult<Self> {
+    ) -> OperationResult<Self> {
         if let Some(quantized_storage) = quantized_storage {
             Self::new_from_vector_quantization(
                 device,
@@ -77,7 +79,7 @@ impl GpuVectorStorage {
         device: Arc<gpu::Device>,
         vector_storage: &VectorStorageEnum,
         quantized_storage: &QuantizedVectorStorage,
-    ) -> gpu::GpuResult<Self> {
+    ) -> OperationResult<Self> {
         match quantized_storage {
             QuantizedVectorStorage::ScalarRam(quantized_storage) => {
                 Self::new_typed::<VectorElementTypeByte>(
@@ -173,12 +175,24 @@ impl GpuVectorStorage {
                     None,
                 )
             }
-            QuantizedVectorStorage::ScalarRamMulti(_) => Err(gpu::GpuError::NotSupported),
-            QuantizedVectorStorage::ScalarMmapMulti(_) => Err(gpu::GpuError::NotSupported),
-            QuantizedVectorStorage::PQRamMulti(_) => Err(gpu::GpuError::NotSupported),
-            QuantizedVectorStorage::PQMmapMulti(_) => Err(gpu::GpuError::NotSupported),
-            QuantizedVectorStorage::BinaryRamMulti(_) => Err(gpu::GpuError::NotSupported),
-            QuantizedVectorStorage::BinaryMmapMulti(_) => Err(gpu::GpuError::NotSupported),
+            QuantizedVectorStorage::ScalarRamMulti(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            QuantizedVectorStorage::ScalarMmapMulti(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            QuantizedVectorStorage::PQRamMulti(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            QuantizedVectorStorage::PQMmapMulti(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            QuantizedVectorStorage::BinaryRamMulti(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            QuantizedVectorStorage::BinaryMmapMulti(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
         }
     }
 
@@ -186,7 +200,7 @@ impl GpuVectorStorage {
         device: Arc<gpu::Device>,
         vector_storage: &VectorStorageEnum,
         force_half_precision: bool,
-    ) -> gpu::GpuResult<Self> {
+    ) -> OperationResult<Self> {
         match vector_storage {
             VectorStorageEnum::DenseSimple(vector_storage) => {
                 if force_half_precision {
@@ -368,20 +382,36 @@ impl GpuVectorStorage {
                     None,
                 )
             }
-            VectorStorageEnum::SparseSimple(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseSimple(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseSimpleByte(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseSimpleHalf(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseAppendableMemmap(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseAppendableMemmapByte(_) => {
-                Err(gpu::GpuError::NotSupported)
-            }
-            VectorStorageEnum::MultiDenseAppendableMemmapHalf(_) => {
-                Err(gpu::GpuError::NotSupported)
-            }
-            VectorStorageEnum::MultiDenseAppendableInRam(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseAppendableInRamByte(_) => Err(gpu::GpuError::NotSupported),
-            VectorStorageEnum::MultiDenseAppendableInRamHalf(_) => Err(gpu::GpuError::NotSupported),
+            VectorStorageEnum::SparseSimple(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseSimple(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseSimpleByte(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseSimpleHalf(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseAppendableMemmap(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseAppendableMemmapByte(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseAppendableMemmapHalf(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseAppendableInRam(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseAppendableInRamByte(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
+            VectorStorageEnum::MultiDenseAppendableInRamHalf(_) => Err(OperationError::from(
+                gpu::GpuError::NotSupported("Multivectors".to_string()),
+            )),
         }
     }
 
@@ -392,7 +422,7 @@ impl GpuVectorStorage {
         count: usize,
         get_vector: impl Fn(PointOffsetType) -> Cow<'a, [TElement]>,
         quantization: Option<GpuQuantization>,
-    ) -> gpu::GpuResult<Self> {
+    ) -> OperationResult<Self> {
         let timer = std::time::Instant::now();
 
         let dim = get_vector(0).len();
@@ -403,21 +433,23 @@ impl GpuVectorStorage {
         let points_in_storage_count = Self::get_points_in_storage_count(count);
         let vectors_buffer: Vec<Arc<gpu::Buffer>> = (0..STORAGES_COUNT)
             .map(|_| -> gpu::GpuResult<Arc<gpu::Buffer>> {
-                Ok(Arc::new(gpu::Buffer::new(
+                Ok(gpu::Buffer::new(
                     device.clone(),
+                    "Vector storage buffer",
                     gpu::BufferType::Storage,
                     points_in_storage_count * capacity * std::mem::size_of::<TElement>(),
-                )?))
+                )?)
             })
             .collect::<gpu::GpuResult<Vec<_>>>()?;
         log::trace!("Storage buffer size {}", vectors_buffer[0].size);
 
         let mut upload_context = gpu::Context::new(device.clone());
-        let staging_buffer = Arc::new(gpu::Buffer::new(
+        let staging_buffer = gpu::Buffer::new(
             device.clone(),
+            "Vector storage upload staging buffer",
             gpu::BufferType::CpuToGpu,
             upload_points_count * capacity * std::mem::size_of::<TElement>(),
-        )?);
+        )?;
         log::trace!(
             "Staging buffer size {}, upload_points_count = {}",
             staging_buffer.size,
@@ -440,7 +472,7 @@ impl GpuVectorStorage {
                 staging_buffer.upload_slice(
                     &extended_vector,
                     upload_points * capacity * std::mem::size_of::<TElement>(),
-                );
+                )?;
                 upload_size += capacity * std::mem::size_of::<TElement>();
                 upload_points += 1;
 
@@ -453,7 +485,7 @@ impl GpuVectorStorage {
                         upload_size,
                     );
                     upload_context.run();
-                    upload_context.wait_finish();
+                    upload_context.wait_finish(GPU_TIMEOUT);
 
                     log::trace!(
                         "Uploaded {} vectors, {} MB",
@@ -475,7 +507,7 @@ impl GpuVectorStorage {
                     upload_size,
                 );
                 upload_context.run();
-                upload_context.wait_finish();
+                upload_context.wait_finish(GPU_TIMEOUT);
 
                 log::trace!(
                     "Uploaded {} vectors, {} MB",
@@ -559,24 +591,26 @@ impl GpuVectorStorage {
         device: Arc<gpu::Device>,
         quantized_storage: &EncodedVectorsU8<TStorage>,
         count: usize,
-    ) -> gpu::GpuResult<Arc<gpu::Buffer>> {
-        let sq_offsets_buffer = Arc::new(gpu::Buffer::new(
+    ) -> OperationResult<Arc<gpu::Buffer>> {
+        let sq_offsets_buffer = gpu::Buffer::new(
             device.clone(),
+            "SQ offsets buffer",
             gpu::BufferType::Storage,
             count * std::mem::size_of::<f32>(),
-        )?);
+        )?;
 
-        let sq_offsets_staging_buffer = Arc::new(gpu::Buffer::new(
+        let sq_offsets_staging_buffer = gpu::Buffer::new(
             device.clone(),
+            "SQ offsets staging buffer",
             gpu::BufferType::CpuToGpu,
             sq_offsets_buffer.size,
-        )?);
+        )?;
 
         let mut upload_context = gpu::Context::new(device.clone());
 
         for i in 0..count {
             let (offset, _) = quantized_storage.get_quantized_vector(i as PointOffsetType);
-            sq_offsets_staging_buffer.upload(&offset, i * std::mem::size_of::<f32>());
+            sq_offsets_staging_buffer.upload(&offset, i * std::mem::size_of::<f32>())?;
         }
 
         upload_context.copy_gpu_buffer(
@@ -587,7 +621,7 @@ impl GpuVectorStorage {
             sq_offsets_buffer.size,
         );
         upload_context.run();
-        upload_context.wait_finish();
+        upload_context.wait_finish(GPU_TIMEOUT);
 
         Ok(sq_offsets_buffer)
     }
@@ -595,9 +629,10 @@ impl GpuVectorStorage {
     pub fn create_pq_quantization<TStorage: EncodedStorage>(
         device: Arc<gpu::Device>,
         quantized_storage: &EncodedVectorsPQ<TStorage>,
-    ) -> gpu::GpuResult<GpuProductQuantization> {
-        let centroids_buffer = Arc::new(gpu::Buffer::new(
+    ) -> OperationResult<GpuProductQuantization> {
+        let centroids_buffer = gpu::Buffer::new(
             device.clone(),
+            "PQ centroids buffer",
             gpu::BufferType::Storage,
             quantized_storage
                 .get_metadata()
@@ -606,28 +641,31 @@ impl GpuVectorStorage {
                 .map(|c| c.len())
                 .sum::<usize>()
                 * std::mem::size_of::<f32>(),
-        )?);
-        let centroids_staging_buffer = Arc::new(gpu::Buffer::new(
+        )?;
+        let centroids_staging_buffer = gpu::Buffer::new(
             device.clone(),
+            "PQ centroids staging buffer",
             gpu::BufferType::CpuToGpu,
             centroids_buffer.size,
-        )?);
-        let vector_division_buffer = Arc::new(gpu::Buffer::new(
+        )?;
+        let vector_division_buffer = gpu::Buffer::new(
             device.clone(),
+            "PQ vector division buffer",
             gpu::BufferType::Storage,
             quantized_storage.get_metadata().vector_division.len() * std::mem::size_of::<u32>() * 2,
-        )?);
-        let vector_division_staging_buffer = Arc::new(gpu::Buffer::new(
+        )?;
+        let vector_division_staging_buffer = gpu::Buffer::new(
             device.clone(),
+            "PQ vector division staging buffer",
             gpu::BufferType::CpuToGpu,
             vector_division_buffer.size,
-        )?);
+        )?;
 
         let mut upload_context = gpu::Context::new(device.clone());
 
         let mut centroids_offset = 0;
         for centroids in &quantized_storage.get_metadata().centroids {
-            centroids_staging_buffer.upload(centroids, centroids_offset);
+            centroids_staging_buffer.upload(centroids, centroids_offset)?;
             centroids_offset += centroids.len() * std::mem::size_of::<f32>();
         }
 
@@ -645,7 +683,7 @@ impl GpuVectorStorage {
             .iter()
             .flat_map(|range| [range.start as u32, range.end as u32].into_iter())
             .collect();
-        vector_division_staging_buffer.upload(&vector_division, 0);
+        vector_division_staging_buffer.upload(&vector_division, 0)?;
 
         upload_context.copy_gpu_buffer(
             vector_division_staging_buffer,
@@ -656,7 +694,7 @@ impl GpuVectorStorage {
         );
 
         upload_context.run();
-        upload_context.wait_finish();
+        upload_context.wait_finish(GPU_TIMEOUT);
 
         Ok(GpuProductQuantization {
             centroids_buffer,
@@ -766,14 +804,13 @@ mod tests {
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, None, force_half_precision).unwrap();
 
-        let scores_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                num_vectors * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
+        let scores_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores buffer",
+            gpu::BufferType::Storage,
+            num_vectors * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -803,17 +840,16 @@ mod tests {
 
         let timer = std::time::Instant::now();
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
         log::trace!("GPU scoring time = {:?}", timer.elapsed());
 
-        let staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::GpuToCpu,
-                num_vectors * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
+        let staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores staging buffer",
+            gpu::BufferType::GpuToCpu,
+            num_vectors * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
         context.copy_gpu_buffer(
             scores_buffer,
             staging_buffer.clone(),
@@ -822,10 +858,10 @@ mod tests {
             num_vectors * std::mem::size_of::<f32>(),
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
         let mut scores = vec![0.0f32; num_vectors];
-        staging_buffer.download_slice(&mut scores, 0);
+        staging_buffer.download_slice(&mut scores, 0).unwrap();
 
         let timer = std::time::Instant::now();
         for i in 0..num_vectors {
@@ -929,14 +965,13 @@ mod tests {
             GpuVectorStorageElementType::Binary
         );
 
-        let scores_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                num_vectors * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
+        let scores_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores buffer",
+            gpu::BufferType::Storage,
+            num_vectors * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -966,17 +1001,16 @@ mod tests {
 
         let timer = std::time::Instant::now();
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
         log::trace!("GPU scoring time = {:?}", timer.elapsed());
 
-        let staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::GpuToCpu,
-                num_vectors * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
+        let staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores staging buffer",
+            gpu::BufferType::GpuToCpu,
+            num_vectors * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
         context.copy_gpu_buffer(
             scores_buffer,
             staging_buffer.clone(),
@@ -985,10 +1019,10 @@ mod tests {
             num_vectors * std::mem::size_of::<f32>(),
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
         let mut scores = vec![0.0f32; num_vectors];
-        staging_buffer.download_slice(&mut scores, 0);
+        staging_buffer.download_slice(&mut scores, 0).unwrap();
 
         let stopped = false.into();
         let point_deleted = BitVec::repeat(false, num_vectors);
@@ -1065,14 +1099,13 @@ mod tests {
             GpuVectorStorageElementType::SQ
         );
 
-        let scores_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::Storage,
-                num_vectors * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
+        let scores_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores buffer",
+            gpu::BufferType::Storage,
+            num_vectors * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -1102,17 +1135,16 @@ mod tests {
 
         let timer = std::time::Instant::now();
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
         log::trace!("GPU scoring time = {:?}", timer.elapsed());
 
-        let staging_buffer = Arc::new(
-            gpu::Buffer::new(
-                device.clone(),
-                gpu::BufferType::GpuToCpu,
-                num_vectors * std::mem::size_of::<f32>(),
-            )
-            .unwrap(),
-        );
+        let staging_buffer = gpu::Buffer::new(
+            device.clone(),
+            "Scores staging buffer",
+            gpu::BufferType::GpuToCpu,
+            num_vectors * std::mem::size_of::<f32>(),
+        )
+        .unwrap();
         context.copy_gpu_buffer(
             scores_buffer,
             staging_buffer.clone(),
@@ -1121,10 +1153,10 @@ mod tests {
             num_vectors * std::mem::size_of::<f32>(),
         );
         context.run();
-        context.wait_finish();
+        context.wait_finish(GPU_TIMEOUT);
 
         let mut scores = vec![0.0f32; num_vectors];
-        staging_buffer.download_slice(&mut scores, 0);
+        staging_buffer.download_slice(&mut scores, 0).unwrap();
 
         let stopped = false.into();
         let point_deleted = BitVec::repeat(false, num_vectors);
