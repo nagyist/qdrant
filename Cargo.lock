@@ -2366,6 +2366,8 @@ dependencies = [
  "ash",
  "gpu-allocator",
  "log",
+ "memory",
+ "parking_lot",
  "rand 0.8.5",
  "shaderc",
 ]

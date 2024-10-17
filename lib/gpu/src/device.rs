@@ -1,9 +1,10 @@
 use std::ffi::CString;
 use std::ptr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use ash::vk;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, Allocator, AllocatorCreateDesc};
+use parking_lot::Mutex;
 
 use crate::*;
 
@@ -40,6 +41,9 @@ impl Device {
         vk_physical_device: PhysicalDevice,
         queue_index: usize,
     ) -> Option<Device> {
+        // TODO(gpu): move to the instance
+        let compiler = shaderc::Compiler::new().unwrap();
+
         #[allow(unused_mut)]
         let mut extensions_cstr: Vec<CString> =
             vec![CString::from(ash::vk::KhrMaintenance1Fn::name())];
@@ -207,7 +211,6 @@ impl Device {
                 .ok()?,
             ));
 
-            let compiler = shaderc::Compiler::new().unwrap();
             Some(Device {
                 name: vk_physical_device.name.clone(),
                 instance: instance.clone(),
@@ -233,14 +236,14 @@ impl Device {
     }
 
     pub fn gpu_alloc(&self, allocation_desc: &AllocationCreateDesc) -> GpuResult<Allocation> {
-        let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock().unwrap();
+        let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock();
         gpu_allocator
             .allocate(allocation_desc)
             .map_err(GpuError::from)
     }
 
     pub fn gpu_free(&self, allocation: Allocation) {
-        let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock().unwrap();
+        let mut gpu_allocator = self.gpu_allocator.as_ref().unwrap().lock();
         gpu_allocator.free(allocation).unwrap();
     }
 
@@ -253,6 +256,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         self.gpu_allocator = None;
         unsafe {
+            // TODO(gpu): timeout
             self.vk_device.device_wait_idle().unwrap();
             self.vk_device.destroy_device(self.allocation_callbacks());
         }

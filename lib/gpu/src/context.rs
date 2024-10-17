@@ -40,31 +40,25 @@ impl Drop for Context {
 
 impl Context {
     pub fn new(device: Arc<Device>) -> Self {
-        let queue;
-        let vk_command_pool;
-        let vk_fence;
-        {
-            queue = device.compute_queues[device.queue_index % device.compute_queues.len()].clone();
+        let queue = device.compute_queues[device.queue_index % device.compute_queues.len()].clone();
+        let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
+            .queue_family_index(queue.vk_queue_family_index as u32)
+            .flags(vk::CommandPoolCreateFlags::default());
+        let vk_command_pool = unsafe {
+            device
+                .vk_device
+                .create_command_pool(&command_pool_create_info, device.allocation_callbacks())
+                .unwrap()
+        };
 
-            let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
-                .queue_family_index(queue.vk_queue_family_index as u32)
-                .flags(vk::CommandPoolCreateFlags::default());
-            vk_command_pool = unsafe {
-                device
-                    .vk_device
-                    .create_command_pool(&command_pool_create_info, device.allocation_callbacks())
-                    .unwrap()
-            };
-
-            let fence_create_info =
-                vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::default());
-            vk_fence = unsafe {
-                device
-                    .vk_device
-                    .create_fence(&fence_create_info, device.allocation_callbacks())
-                    .unwrap()
-            };
-        }
+        let fence_create_info =
+            vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::default());
+        let vk_fence = unsafe {
+            device
+                .vk_device
+                .create_fence(&fence_create_info, device.allocation_callbacks())
+                .unwrap()
+        };
 
         let mut context = Self {
             device,
@@ -75,6 +69,7 @@ impl Context {
             vk_fence,
             resources: Vec::new(),
         };
+
         context.init_command_buffer();
         context
     }

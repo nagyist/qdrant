@@ -6,7 +6,7 @@ use ash::vk;
 use crate::*;
 
 /// Struct that represents a compiled shader.
-/// If you want to create a new shader, you have to compile it first using for instance `shaderc`.
+/// If you want to create a new shader, you have to compile it first using `shaderc`.
 pub struct Shader {
     /// Device that owns the shader.
     pub device: Arc<Device>,

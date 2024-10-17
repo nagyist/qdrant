@@ -1,8 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use ash::vk;
 use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc};
 use gpu_allocator::MemoryLocation;
+use parking_lot::Mutex;
 
 use crate::*;
 
@@ -48,7 +49,7 @@ impl Resource for Buffer {}
 
 impl Buffer {
     pub fn new(
-        device: Arc<Device>, // Device that owns the buffer.
+        device: Arc<Device>,   // Device that owns the buffer.
         name: impl AsRef<str>, // Name of the buffer for tracking and debugging purposes.
         buffer_type: BufferType,
         size: usize,
@@ -119,12 +120,22 @@ impl Buffer {
         };
 
         // Bind the buffer to the allocated memory.
-        unsafe {
+        let bind_result = unsafe {
             device
                 .vk_device
                 .bind_buffer_memory(vk_buffer, allocation.memory(), allocation.offset())
-                .unwrap()
         };
+        if let Err(e) = bind_result {
+            // Free the allocated memory in case of an error.
+            device.gpu_free(allocation);
+            unsafe {
+                // Destroy the buffer.
+                device
+                    .vk_device
+                    .destroy_buffer(vk_buffer, device.allocation_callbacks());
+            }
+            return Err(GpuError::from(e));
+        }
 
         Ok(Arc::new(Self {
             device,
@@ -141,12 +152,7 @@ impl Buffer {
             return Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        let bytes = unsafe {
-            std::slice::from_raw_parts_mut(
-                (data as *mut T) as *mut u8,
-                std::mem::size_of::<T>(),
-            )
-        };
+        let bytes = memory::mmap_ops::transmute_to_u8_mut(data);
         self.download_bytes(bytes, offset)
     }
 
@@ -156,13 +162,7 @@ impl Buffer {
             return Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        let bytes = unsafe {
-            std::slice::from_raw_parts_mut(
-                (data.as_ptr() as *mut T) as *mut u8,
-                std::mem::size_of_val(data),
-            )
-        };
-
+        let bytes = memory::mmap_ops::transmute_to_u8_slice_mut(data);
         self.download_bytes(bytes, offset)
     }
 
@@ -173,18 +173,14 @@ impl Buffer {
         }
 
         if data.len() + offset > self.size {
-            return Err(GpuError::OutOfBounds("Out of bounds while dowloading from GPU".to_string()));
+            return Err(GpuError::OutOfBounds(
+                "Out of bounds while dowloading from GPU".to_string(),
+            ));
         }
 
-        let allocation = self.allocation.lock().unwrap();
+        let allocation = self.allocation.lock();
         if let Some(slice) = allocation.mapped_slice() {
-            unsafe {
-                std::ptr::copy(
-                    slice.as_ptr().add(offset),
-                    data.as_mut_ptr(),
-                    data.len(),
-                );
-            }
+            data.copy_from_slice(&slice[offset..offset + data.len()]);
             Ok(())
         } else {
             Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()))
@@ -197,13 +193,7 @@ impl Buffer {
             return Err(GpuError::Other(UPLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                (data as *const T) as *const u8,
-                std::mem::size_of::<T>(),
-            )
-        };
-
+        let bytes = memory::mmap_ops::transmute_to_u8(data);
         self.upload_bytes(bytes, offset)
     }
 
@@ -213,13 +203,7 @@ impl Buffer {
             return Err(GpuError::Other(UPLOAD_NOT_ALLOWED_ERROR.to_string()));
         }
 
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                (data.as_ptr() as *mut T) as *mut u8,
-                std::mem::size_of_val(data),
-            )
-        };
-
+        let bytes = memory::mmap_ops::transmute_to_u8_slice(data);
         self.upload_bytes(bytes, offset)
     }
 
@@ -230,19 +214,17 @@ impl Buffer {
         }
 
         if data.len() + offset > self.size {
-            return Err(GpuError::OutOfBounds("Out of bounds while uploading to GPU".to_string()));
+            return Err(GpuError::OutOfBounds(
+                "Out of bounds while uploading to GPU".to_string(),
+            ));
         }
 
-        let mut allocation = self.allocation.lock().unwrap();
-        let slice = allocation.mapped_slice_mut().unwrap();
-
-        unsafe {
-            std::ptr::copy(
-                data.as_ptr(),
-                slice.as_mut_ptr().add(offset),
-                data.len(),
-            );
+        let mut allocation = self.allocation.lock();
+        if let Some(slice) = allocation.mapped_slice_mut() {
+            slice[offset..offset + data.len()].copy_from_slice(data);
             Ok(())
+        } else {
+            Err(GpuError::Other(DOWNLOAD_NOT_ALLOWED_ERROR.to_string()))
         }
     }
 }
@@ -252,7 +234,7 @@ impl Drop for Buffer {
         // Drop the allocation and free the allocated memory
         let mut allocation = Mutex::new(Allocation::default());
         std::mem::swap(&mut allocation, &mut self.allocation);
-        let allocation = allocation.into_inner().unwrap();
+        let allocation = allocation.into_inner();
         self.device.gpu_free(allocation);
 
         // Destroy the buffer
