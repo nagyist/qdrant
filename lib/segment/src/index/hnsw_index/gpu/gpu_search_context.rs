@@ -134,7 +134,7 @@ impl GpuSearchContext {
             .with_links_capacity(gpu_links.links_capacity)
             .with_visited_flags_capacity(gpu_visited_flags.capacity)
             .with_exact(exact)
-            .build();
+            .build()?;
 
         let insert_shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/run_insert_vector.comp"))
@@ -145,7 +145,7 @@ impl GpuSearchContext {
             .with_links_capacity(gpu_links.links_capacity)
             .with_visited_flags_capacity(gpu_visited_flags.capacity)
             .with_exact(exact)
-            .build();
+            .build()?;
 
         let search_shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_hnsw_search.comp"))
@@ -156,7 +156,7 @@ impl GpuSearchContext {
             .with_links_capacity(gpu_links.links_capacity)
             .with_visited_flags_capacity(gpu_visited_flags.capacity)
             .with_exact(exact)
-            .build();
+            .build()?;
 
         let patches_shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/run_get_patch.comp"))
@@ -167,7 +167,7 @@ impl GpuSearchContext {
             .with_links_capacity(gpu_links.links_capacity)
             .with_visited_flags_capacity(gpu_visited_flags.capacity)
             .with_exact(exact)
-            .build();
+            .build()?;
 
         let greedy_descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -186,7 +186,7 @@ impl GpuSearchContext {
             .add_descriptor_set_layout(2, gpu_links.descriptor_set_layout.clone())
             .add_descriptor_set_layout(3, gpu_visited_flags.descriptor_set_layout.clone())
             .add_shader(greedy_search_shader.clone())
-            .build(device.clone());
+            .build(device.clone())?;
 
         let search_descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -205,7 +205,7 @@ impl GpuSearchContext {
             .add_descriptor_set_layout(2, gpu_links.descriptor_set_layout.clone())
             .add_descriptor_set_layout(3, gpu_visited_flags.descriptor_set_layout.clone())
             .add_shader(search_shader.clone())
-            .build(device.clone());
+            .build(device.clone())?;
 
         let patches_descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -226,7 +226,7 @@ impl GpuSearchContext {
             .add_descriptor_set_layout(2, gpu_links.descriptor_set_layout.clone())
             .add_descriptor_set_layout(3, gpu_visited_flags.descriptor_set_layout.clone())
             .add_shader(patches_shader.clone())
-            .build(device.clone());
+            .build(device.clone())?;
 
         let insert_descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -247,7 +247,7 @@ impl GpuSearchContext {
             .add_descriptor_set_layout(2, gpu_links.descriptor_set_layout.clone())
             .add_descriptor_set_layout(3, gpu_visited_flags.descriptor_set_layout.clone())
             .add_shader(insert_shader.clone())
-            .build(device.clone());
+            .build(device.clone())?;
 
         let context = gpu::Context::new(device.clone());
         Ok(Self {
@@ -1089,7 +1089,8 @@ mod tests {
             .with_links_capacity(test.gpu_search_context.gpu_links.links_capacity)
             .with_visited_flags_capacity(test.gpu_search_context.gpu_visited_flags.capacity)
             .with_exact(test.gpu_search_context.exact)
-            .build();
+            .build()
+            .unwrap();
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
@@ -1125,7 +1126,8 @@ mod tests {
                     .clone(),
             )
             .add_shader(shader.clone())
-            .build(test.gpu_search_context.device.clone());
+            .build(test.gpu_search_context.device.clone())
+            .unwrap();
 
         test.gpu_search_context.context.bind_pipeline(
             pipeline.clone(),

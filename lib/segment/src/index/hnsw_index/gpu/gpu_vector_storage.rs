@@ -823,13 +823,15 @@ mod tests {
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_vector_storage.comp"))
             .with_gpu_vector_storage(&gpu_vector_storage)
-            .build();
+            .build()
+            .unwrap();
 
         let pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, descriptor_set_layout.clone())
             .add_descriptor_set_layout(1, gpu_vector_storage.descriptor_set_layout.clone())
             .add_shader(shader.clone())
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let mut context = gpu::Context::new(device.clone());
         context.bind_pipeline(
@@ -984,13 +986,15 @@ mod tests {
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_vector_storage.comp"))
             .with_gpu_vector_storage(&gpu_vector_storage)
-            .build();
+            .build()
+            .unwrap();
 
         let pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, descriptor_set_layout.clone())
             .add_descriptor_set_layout(1, gpu_vector_storage.descriptor_set_layout.clone())
             .add_shader(shader.clone())
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let mut context = gpu::Context::new(device.clone());
         context.bind_pipeline(
@@ -1118,13 +1122,15 @@ mod tests {
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_vector_storage.comp"))
             .with_gpu_vector_storage(&gpu_vector_storage)
-            .build();
+            .build()
+            .unwrap();
 
         let pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, descriptor_set_layout.clone())
             .add_descriptor_set_layout(1, gpu_vector_storage.descriptor_set_layout.clone())
             .add_shader(shader.clone())
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let mut context = gpu::Context::new(device.clone());
         context.bind_pipeline(

@@ -64,7 +64,8 @@ mod tests {
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_candidates_heap.comp"))
             .with_candidates_heap_capacity(gpu_candidates_heap.capacity)
-            .build();
+            .build()
+            .unwrap();
 
         let input_points_buffer = gpu::Buffer::new(
             device.clone(),
@@ -142,7 +143,8 @@ mod tests {
         let pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, descriptor_set_layout.clone())
             .add_shader(shader.clone())
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         context.bind_pipeline(pipeline, &[descriptor_set.clone()]);
         context.dispatch(groups_count, 1, 1);

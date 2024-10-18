@@ -25,7 +25,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn build(&self, device: Arc<Device>) -> Arc<Pipeline> {
-        Arc::new(Pipeline::new(device, self))
+    pub fn build(&self, device: Arc<Device>) -> GpuResult<Arc<Pipeline>> {
+        Ok(Arc::new(Pipeline::new(device, self)?))
     }
 }

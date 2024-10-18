@@ -1,4 +1,3 @@
-use std::ffi::CStr;
 use std::sync::Arc;
 
 use ash::vk;
@@ -21,32 +20,26 @@ impl Resource for Shader {}
 impl Shader {
     /// Create a new shader from the given compiled shader code.
     /// `shader_code` is a compiled shader code in the binary SPIR-V format.
-    pub fn new(device: Arc<Device>, shader_code: &[u8]) -> Self {
+    pub fn new(device: Arc<Device>, shader_code: &[u8]) -> GpuResult<Self> {
+        // Decode SPIR-V from bytes with correct alignment.
         let mut spv_file = std::io::Cursor::new(shader_code);
-        let shader_code = ash::util::read_spv(&mut spv_file).unwrap();
+        let shader_code = ash::util::read_spv(&mut spv_file)
+            .map_err(|_| GpuError::Other("Failed to read SPIR-V shader code".to_string()))?;
 
+        // Create shader.
         let shader_module_create_info = vk::ShaderModuleCreateInfo::builder()
             .code(&shader_code)
             .build();
         let shader_module = unsafe {
             device
                 .vk_device
-                .create_shader_module(&shader_module_create_info, device.allocation_callbacks())
-                .unwrap()
+                .create_shader_module(&shader_module_create_info, device.allocation_callbacks())?
         };
-        Self {
+
+        Ok(Self {
             device,
             vk_shader_module: shader_module,
-        }
-    }
-
-    pub(crate) fn get_pipeline_shader_stage_create_info(
-        &self,
-    ) -> vk::PipelineShaderStageCreateInfoBuilder {
-        vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::COMPUTE)
-            .module(self.vk_shader_module)
-            .name(CStr::from_bytes_with_nul(b"main\0").unwrap())
+        })
     }
 }
 

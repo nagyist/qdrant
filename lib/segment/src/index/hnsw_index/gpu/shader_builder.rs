@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::gpu_vector_storage::{GpuVectorStorage, GpuVectorStorageElementType};
+use crate::common::operation_error::OperationResult;
 use crate::index::hnsw_index::gpu::gpu_vector_storage::GpuQuantization;
 use crate::types::Distance;
 
@@ -157,7 +158,7 @@ impl<'a> ShaderBuilder<'a> {
         self
     }
 
-    pub fn build(&self) -> Arc<gpu::Shader> {
+    pub fn build(&self) -> OperationResult<Arc<gpu::Shader>> {
         let mut options = shaderc::CompileOptions::new().unwrap();
         options.set_optimization_level(shaderc::OptimizationLevel::Performance);
         options.set_target_env(
@@ -277,9 +278,9 @@ impl<'a> ShaderBuilder<'a> {
             )
             .unwrap();
         log::debug!("Shader compilation took: {:?}", timer.elapsed());
-        Arc::new(gpu::Shader::new(
+        Ok(Arc::new(gpu::Shader::new(
             self.device.clone(),
             compiled.as_binary_u8(),
-        ))
+        )?))
     }
 }
