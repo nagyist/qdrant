@@ -15,6 +15,7 @@ pub struct Instance {
     pub extensions: Vec<String>,
     vk_debug_utils_loader: Option<ash::extensions::ext::DebugUtils>,
     vk_debug_messenger: vk::DebugUtilsMessengerEXT,
+    pub compiler: shaderc::Compiler,
 }
 
 #[derive(Clone)]
@@ -30,6 +31,9 @@ impl Instance {
         allocation_callbacks: Option<Box<dyn AllocationCallbacks>>,
         dump_api: bool,
     ) -> GpuResult<Self> {
+        let compiler = shaderc::Compiler::new()
+            .ok_or_else(|| GpuError::Other("Failed to create shaderc compiler".to_string()))?;
+
         unsafe {
             let entry = ash::Entry::load().unwrap();
             let app_name = CString::new(name).unwrap();
@@ -145,6 +149,7 @@ impl Instance {
                 extensions,
                 vk_debug_utils_loader,
                 vk_debug_messenger,
+                compiler,
             })
         }
     }

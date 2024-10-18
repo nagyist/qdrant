@@ -268,6 +268,7 @@ impl<'a> ShaderBuilder<'a> {
         let timer = std::time::Instant::now();
         let compiled = self
             .device
+            .instance
             .compiler
             .compile_into_spirv(
                 &self.shader_code,

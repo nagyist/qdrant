@@ -27,7 +27,6 @@ pub struct Device {
     pub is_dynamic_subgroup_size: bool,
     pub max_compute_work_group_size: [usize; 3],
     pub max_buffer_size: usize,
-    pub compiler: shaderc::Compiler,
     pub queue_index: usize,
 }
 
@@ -41,9 +40,6 @@ impl Device {
         vk_physical_device: PhysicalDevice,
         queue_index: usize,
     ) -> Option<Device> {
-        // TODO(gpu): move to the instance
-        let compiler = shaderc::Compiler::new().unwrap();
-
         #[allow(unused_mut)]
         let mut extensions_cstr: Vec<CString> =
             vec![CString::from(ash::vk::KhrMaintenance1Fn::name())];
@@ -222,7 +218,6 @@ impl Device {
                 subgroup_size,
                 max_compute_work_group_size,
                 max_buffer_size,
-                compiler,
                 is_dynamic_subgroup_size,
                 queue_index,
             })
