@@ -87,16 +87,18 @@ mod tests {
         .unwrap();
         upload_staging_buffer.upload_slice(&inputs_data, 0).unwrap();
 
-        let mut context = gpu::Context::new(device.clone());
-        context.copy_gpu_buffer(
-            upload_staging_buffer.clone(),
-            input_points_buffer.clone(),
-            0,
-            0,
-            input_points_buffer.size,
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        let mut context = gpu::Context::new(device.clone()).unwrap();
+        context
+            .copy_gpu_buffer(
+                upload_staging_buffer.clone(),
+                input_points_buffer.clone(),
+                0,
+                0,
+                input_points_buffer.size,
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
 
         let test_params_buffer = gpu::Buffer::new(
             device.clone(),
@@ -113,15 +115,17 @@ mod tests {
                 0,
             )
             .unwrap();
-        context.copy_gpu_buffer(
-            upload_staging_buffer,
-            test_params_buffer.clone(),
-            0,
-            0,
-            test_params_buffer.size,
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .copy_gpu_buffer(
+                upload_staging_buffer,
+                test_params_buffer.clone(),
+                0,
+                0,
+                test_params_buffer.size,
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
 
         let scores_output_buffer = gpu::Buffer::new(
             device.clone(),
@@ -158,10 +162,12 @@ mod tests {
             .build(device.clone())
             .unwrap();
 
-        context.bind_pipeline(pipeline, &[descriptor_set.clone()]);
-        context.dispatch(groups_count, 1, 1);
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .bind_pipeline(pipeline, &[descriptor_set.clone()])
+            .unwrap();
+        context.dispatch(groups_count, 1, 1).unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
 
         let download_staging_buffer = gpu::Buffer::new(
             device.clone(),
@@ -170,15 +176,17 @@ mod tests {
             std::cmp::max(scores_output_buffer.size, sorted_output_buffer.size),
         )
         .unwrap();
-        context.copy_gpu_buffer(
-            scores_output_buffer.clone(),
-            download_staging_buffer.clone(),
-            0,
-            0,
-            scores_output_buffer.size,
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .copy_gpu_buffer(
+                scores_output_buffer.clone(),
+                download_staging_buffer.clone(),
+                0,
+                0,
+                scores_output_buffer.size,
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
         let mut scores_output = vec![0.0; inputs_count * groups_count];
         download_staging_buffer
             .download_slice(&mut scores_output, 0)
@@ -201,15 +209,17 @@ mod tests {
 
         let mut nearest_gpu: Vec<PointOffsetType> =
             vec![Default::default(); gpu_nearest_heap.ef * groups_count];
-        context.copy_gpu_buffer(
-            sorted_output_buffer.clone(),
-            download_staging_buffer.clone(),
-            0,
-            0,
-            nearest_gpu.len() * std::mem::size_of::<PointOffsetType>(),
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .copy_gpu_buffer(
+                sorted_output_buffer.clone(),
+                download_staging_buffer.clone(),
+                0,
+                0,
+                nearest_gpu.len() * std::mem::size_of::<PointOffsetType>(),
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
         download_staging_buffer
             .download_slice(nearest_gpu.as_mut_slice(), 0)
             .unwrap();

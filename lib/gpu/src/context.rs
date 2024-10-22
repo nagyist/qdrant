@@ -4,60 +4,75 @@ use ash::vk;
 
 use crate::*;
 
-static DROP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Timeout to wait for GPU execution in drop function.
+static DROP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
+/// GPU execution context.
+/// It records commands and run them on GPU.
+/// It keeps track of resources used in the commands.
+///
+/// Warnings!
+/// 1. Context is not thread safe.
+/// 2. Execution order is not guaranteed. Don't rely on it.
+/// If you need to run commands in specific order, use `wait_finish` method.
+/// And start next command after previous one is finished.
 pub struct Context {
+    // Which device to execute on.
     pub device: Arc<Device>,
+
+    // GPU execution handler.
     pub vk_queue: vk::Queue,
+
+    // Vulkan queue family index which describes the gpu sheduler.
     pub vk_queue_family_index: usize,
+
+    // Command buffer is created using command pool.
     pub vk_command_pool: vk::CommandPool,
+
+    // Command buffer is used to record commands to execute.
     pub vk_command_buffer: vk::CommandBuffer,
+
+    // Syncronization fence to wait for GPU execution.
     pub vk_fence: vk::Fence,
+
+    // Resources used in the context.
     pub resources: Vec<Arc<dyn Resource>>,
 }
 
-impl Drop for Context {
-    fn drop(&mut self) {
-        self.wait_finish(DROP_TIMEOUT);
-        if self.vk_fence != vk::Fence::null() {
-            unsafe {
-                self.device
-                    .vk_device
-                    .destroy_fence(self.vk_fence, self.device.allocation_callbacks());
-            }
-            self.vk_fence = vk::Fence::null();
-        }
-        if self.vk_command_pool != vk::CommandPool::null() {
-            unsafe {
-                self.device
-                    .vk_device
-                    .destroy_command_pool(self.vk_command_pool, self.device.allocation_callbacks());
-            }
-            self.vk_command_pool = vk::CommandPool::null();
-        }
-    }
-}
-
 impl Context {
-    pub fn new(device: Arc<Device>) -> Self {
+    pub fn new(device: Arc<Device>) -> GpuResult<Self> {
+        // Get GPU execution queue from device.
         let queue = device.compute_queues[device.queue_index % device.compute_queues.len()].clone();
+
+        // Create command pool.
         let command_pool_create_info = vk::CommandPoolCreateInfo::builder()
             .queue_family_index(queue.vk_queue_family_index as u32)
             .flags(vk::CommandPoolCreateFlags::default());
         let vk_command_pool = unsafe {
             device
                 .vk_device
-                .create_command_pool(&command_pool_create_info, device.allocation_callbacks())
-                .unwrap()
+                .create_command_pool(&command_pool_create_info, device.allocation_callbacks())?
         };
 
+        // Create fence to wait for GPU execution.
         let fence_create_info =
             vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::default());
         let vk_fence = unsafe {
             device
                 .vk_device
                 .create_fence(&fence_create_info, device.allocation_callbacks())
-                .unwrap()
+        };
+        let vk_fence = match vk_fence {
+            Ok(fence) => fence,
+            Err(e) => {
+                // If fence creation failed, destroy created command pool and return error.
+                unsafe {
+                    device
+                        .vk_device
+                        .destroy_command_pool(vk_command_pool, device.allocation_callbacks());
+                }
+                return Err(GpuError::from(e));
+            }
         };
 
         let mut context = Self {
@@ -70,13 +85,18 @@ impl Context {
             resources: Vec::new(),
         };
 
-        context.init_command_buffer();
-        context
+        if let Err(e) = context.init_command_buffer() {
+            // If command buffer creation failed, return error.
+            // Drop function will clean up created resources.
+            return Err(GpuError::from(e));
+        }
+
+        Ok(context)
     }
 
-    pub fn dispatch(&mut self, x: usize, y: usize, z: usize) {
+    pub fn dispatch(&mut self, x: usize, y: usize, z: usize) -> GpuResult<()> {
         if self.vk_command_buffer == vk::CommandBuffer::null() {
-            self.init_command_buffer();
+            self.init_command_buffer()?;
         }
 
         unsafe {
@@ -87,15 +107,16 @@ impl Context {
                 z as u32,
             );
         }
+        Ok(())
     }
 
     pub fn bind_pipeline(
         &mut self,
         pipeline: Arc<Pipeline>,
         descriptor_sets: &[Arc<DescriptorSet>],
-    ) {
+    ) -> GpuResult<()> {
         if self.vk_command_buffer == vk::CommandBuffer::null() {
-            self.init_command_buffer();
+            self.init_command_buffer()?;
         }
 
         unsafe {
@@ -128,7 +149,9 @@ impl Context {
                 .iter()
                 .map(|r| r.clone() as Arc<dyn Resource>),
         );
-        self.resources.push(pipeline)
+        self.resources.push(pipeline);
+
+        Ok(())
     }
 
     pub fn copy_gpu_buffer(
@@ -138,9 +161,9 @@ impl Context {
         src_offset: usize,
         dst_offset: usize,
         size: usize,
-    ) {
+    ) -> GpuResult<()> {
         if self.vk_command_buffer == vk::CommandBuffer::null() {
-            self.init_command_buffer();
+            self.init_command_buffer()?;
         }
 
         let buffer_copy = vk::BufferCopy::builder()
@@ -159,15 +182,19 @@ impl Context {
 
         self.resources.push(src);
         self.resources.push(dst);
+
+        Ok(())
     }
 
-    pub fn clear_buffer(&mut self, buffer: Arc<Buffer>) {
-        if buffer.size % 4 != 0 {
-            panic!("buffer size must be a multiple of 4");
+    pub fn clear_buffer(&mut self, buffer: Arc<Buffer>) -> GpuResult<()> {
+        if buffer.size % std::mem::size_of::<u32>() != 0 {
+            return Err(GpuError::OutOfBounds(
+                "Buffer size must be a multiple of `uint32` size to clear it".to_string(),
+            ));
         }
 
         if self.vk_command_buffer == vk::CommandBuffer::null() {
-            self.init_command_buffer();
+            self.init_command_buffer()?;
         }
 
         unsafe {
@@ -181,12 +208,16 @@ impl Context {
         }
 
         self.resources.push(buffer);
+
+        Ok(())
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> GpuResult<()> {
         if self.vk_command_buffer == vk::CommandBuffer::null() {
-            return;
+            // Nothing to wait for
+            return Ok(());
         }
+
         unsafe {
             self.device
                 .vk_device
@@ -203,11 +234,14 @@ impl Context {
                 .queue_submit(self.vk_queue, &submit_info, self.vk_fence)
                 .unwrap();
         }
+
+        Ok(())
     }
 
-    pub fn wait_finish(&mut self, timeout: std::time::Duration) {
+    pub fn wait_finish(&mut self, timeout: std::time::Duration) -> GpuResult<()> {
         if self.vk_command_buffer == vk::CommandBuffer::null() {
-            return;
+            // Nothing to wait for
+            return Ok(());
         }
 
         unsafe {
@@ -215,17 +249,24 @@ impl Context {
                 .vk_device
                 .wait_for_fences(&[self.vk_fence], true, timeout.as_nanos() as u64)
                 .unwrap();
-            self.device
-                .vk_device
-                .reset_fences(&[self.vk_fence])
-                .unwrap();
         }
+
         self.destroy_command_buffer();
+
+        // Reset fence. Do it after command buffer destruction to avoid
+        // resources leak in case of reset error.
+        unsafe {
+            self.device.vk_device.reset_fences(&[self.vk_fence])?;
+        }
+
+        Ok(())
     }
 
-    fn init_command_buffer(&mut self) {
+    fn init_command_buffer(&mut self) -> GpuResult<()> {
         if self.vk_command_buffer != vk::CommandBuffer::null() {
-            panic!("vk command buffer was already created");
+            return Err(GpuError::Other(
+                "Vulkan command buffer was already created".to_string(),
+            ));
         }
 
         let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
@@ -249,6 +290,8 @@ impl Context {
                 .begin_command_buffer(self.vk_command_buffer, &command_buffer_begin_info)
                 .unwrap();
         }
+
+        Ok(())
     }
 
     fn destroy_command_buffer(&mut self) {
@@ -261,5 +304,63 @@ impl Context {
             self.vk_command_buffer = vk::CommandBuffer::null();
         }
         self.resources.clear();
+    }
+}
+
+impl Drop for Context {
+    fn drop(&mut self) {
+        let wait_result = self.wait_finish(DROP_TIMEOUT);
+        match wait_result {
+            Err(GpuError::Timeout) => {
+                // Timeout reached, resources are still in use.
+                // Vulkan API cannot stop GPU execution.
+                // This sutiation may appear if shader has infinite loop, etc.
+                // There is no good way to handle this error.
+                // So just log it and ignore resouces deallocation.
+                // This approach may cause memory leaks and used gpu kernels,
+                // but it's better than potential segfault.
+                log::error!("Failed to wait for GPU context to finish");
+
+                // Error was logged, do memory leak to keep the gpu running.
+                let resources = self.resources.clone();
+                self.resources.clear();
+                for resource in resources.into_iter() {
+                    // !!!!!!!!!
+                    std::mem::forget(resource);
+                }
+            }
+            // If there is no timeout, we can safely deallocate resources.
+            wait_result => {
+                wait_result.unwrap_or_else(|e|
+                    // Cannot return error from Drop trait.
+                    // Log it instead.
+                    log::error!("Error while clear GPU context: {:?}", e));
+
+                // If command buffer was not destroyed, destroy it.
+                // This situation may appear if `wait_finish` is an error.
+                self.destroy_command_buffer();
+
+                // Destroy fence.
+                if self.vk_fence != vk::Fence::null() {
+                    unsafe {
+                        self.device
+                            .vk_device
+                            .destroy_fence(self.vk_fence, self.device.allocation_callbacks());
+                    }
+                    self.vk_fence = vk::Fence::null();
+                }
+
+                // Destroy command pool.
+                if self.vk_command_pool != vk::CommandPool::null() {
+                    unsafe {
+                        self.device.vk_device.destroy_command_pool(
+                            self.vk_command_pool,
+                            self.device.allocation_callbacks(),
+                        );
+                    }
+                    self.vk_command_pool = vk::CommandPool::null();
+                }
+            }
+        }
     }
 }

@@ -50,16 +50,16 @@ impl GpuVisitedFlags {
         let params = GpuVisitedFlagsParamsBuffer { generation: 1 };
         params_staging_buffer.upload(&params, 0)?;
 
-        let mut upload_context = gpu::Context::new(device.clone());
+        let mut upload_context = gpu::Context::new(device.clone())?;
         upload_context.copy_gpu_buffer(
             params_staging_buffer.clone(),
             params_buffer.clone(),
             0,
             0,
             std::mem::size_of::<GpuVisitedFlagsParamsBuffer>(),
-        );
-        upload_context.run();
-        upload_context.wait_finish(GPU_TIMEOUT);
+        )?;
+        upload_context.run()?;
+        upload_context.wait_finish(GPU_TIMEOUT)?;
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
@@ -86,7 +86,7 @@ impl GpuVisitedFlags {
     pub fn clear(&mut self, gpu_context: &mut gpu::Context) -> OperationResult<()> {
         if self.params.generation == 255 {
             self.params.generation = 1;
-            gpu_context.clear_buffer(self.visited_flags_buffer.clone());
+            gpu_context.clear_buffer(self.visited_flags_buffer.clone())?;
         } else {
             self.params.generation += 1;
         }
@@ -98,7 +98,7 @@ impl GpuVisitedFlags {
             0,
             0,
             self.params_buffer.size,
-        );
+        )?;
         Ok(())
     }
 }

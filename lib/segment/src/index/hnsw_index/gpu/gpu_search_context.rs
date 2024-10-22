@@ -249,7 +249,7 @@ impl GpuSearchContext {
             .add_shader(insert_shader.clone())
             .build(device.clone())?;
 
-        let context = gpu::Context::new(device.clone());
+        let context = gpu::Context::new(device.clone())?;
         Ok(Self {
             gpu_vector_storage,
             gpu_links,
@@ -396,8 +396,8 @@ impl GpuSearchContext {
             0,
             0,
             count * std::mem::size_of::<PointOffsetType>(),
-        );
-        self.run_context();
+        )?;
+        self.run_context()?;
         let mut gpu_responses = vec![PointOffsetType::default(); count];
         self.download_staging_buffer
             .download_slice(&mut gpu_responses, 0)?;
@@ -434,8 +434,8 @@ impl GpuSearchContext {
             0,
             0,
             std::mem::size_of_val(requests),
-        );
-        self.run_context();
+        )?;
+        self.run_context()?;
 
         self.context.bind_pipeline(
             self.search_pipeline.clone(),
@@ -445,9 +445,9 @@ impl GpuSearchContext {
                 self.gpu_links.descriptor_set.clone(),
                 self.gpu_visited_flags.descriptor_set.clone(),
             ],
-        );
-        self.context.dispatch(requests.len(), 1, 1);
-        self.run_context();
+        )?;
+        self.context.dispatch(requests.len(), 1, 1)?;
+        self.run_context()?;
 
         // Download response
         self.context.copy_gpu_buffer(
@@ -456,8 +456,8 @@ impl GpuSearchContext {
             0,
             0,
             requests.len() * self.gpu_nearest_heap.ef * std::mem::size_of::<ScoredPointOffset>(),
-        );
-        self.run_context();
+        )?;
+        self.run_context()?;
         let mut gpu_responses =
             vec![ScoredPointOffset::default(); requests.len() * self.gpu_nearest_heap.ef];
         self.download_staging_buffer
@@ -498,7 +498,7 @@ impl GpuSearchContext {
             0,
             0,
             std::mem::size_of_val(requests),
-        );
+        )?;
 
         // download previous results
         if prev_results_count > 0 {
@@ -508,9 +508,9 @@ impl GpuSearchContext {
                 0,
                 0,
                 prev_results_count * std::mem::size_of::<PointOffsetType>(),
-            );
+            )?;
         }
-        self.run_context();
+        self.run_context()?;
 
         self.context.bind_pipeline(
             self.greedy_pipeline.clone(),
@@ -520,9 +520,9 @@ impl GpuSearchContext {
                 self.gpu_links.descriptor_set.clone(),
                 self.gpu_visited_flags.descriptor_set.clone(),
             ],
-        );
-        self.context.dispatch(requests.len(), 1, 1);
-        self.run_context();
+        )?;
+        self.context.dispatch(requests.len(), 1, 1)?;
+        self.run_context()?;
 
         self.updates_timer += timer.elapsed();
         self.updates_count += 1;
@@ -556,7 +556,7 @@ impl GpuSearchContext {
         // clear atomics
         if self.gpu_visited_flags.params.generation == 1 {
             self.context
-                .clear_buffer(self.insert_atomics_buffer.clone());
+                .clear_buffer(self.insert_atomics_buffer.clone())?;
         }
 
         // upload requests
@@ -567,7 +567,7 @@ impl GpuSearchContext {
             0,
             0,
             std::mem::size_of_val(requests),
-        );
+        )?;
 
         // download previous results
         if prev_results_count > 0 {
@@ -577,9 +577,9 @@ impl GpuSearchContext {
                 0,
                 0,
                 prev_results_count * std::mem::size_of::<PointOffsetType>(),
-            );
+            )?;
         }
-        self.run_context();
+        self.run_context()?;
 
         self.context.bind_pipeline(
             self.insert_pipeline.clone(),
@@ -589,9 +589,9 @@ impl GpuSearchContext {
                 self.gpu_links.descriptor_set.clone(),
                 self.gpu_visited_flags.descriptor_set.clone(),
             ],
-        );
-        self.context.dispatch(requests.len(), 1, 1);
-        self.run_context();
+        )?;
+        self.context.dispatch(requests.len(), 1, 1)?;
+        self.run_context()?;
 
         self.patches_timer += timer.elapsed();
         self.patches_count += 1;
@@ -626,8 +626,8 @@ impl GpuSearchContext {
             0,
             0,
             std::mem::size_of_val(requests),
-        );
-        self.run_context();
+        )?;
+        self.run_context()?;
 
         self.context.bind_pipeline(
             self.patches_pipeline.clone(),
@@ -637,11 +637,11 @@ impl GpuSearchContext {
                 self.gpu_links.descriptor_set.clone(),
                 self.gpu_visited_flags.descriptor_set.clone(),
             ],
-        );
-        self.context.dispatch(requests.len(), 1, 1);
+        )?;
+        self.context.dispatch(requests.len(), 1, 1)?;
 
         let timer = std::time::Instant::now();
-        self.run_context();
+        self.run_context()?;
         self.patches_timer += timer.elapsed();
 
         // Download response
@@ -651,15 +651,15 @@ impl GpuSearchContext {
             0,
             0,
             requests.len() * std::mem::size_of::<PointOffsetType>(),
-        );
+        )?;
         self.context.copy_gpu_buffer(
             self.patches_responses_buffer.clone(),
             self.download_staging_buffer.clone(),
             0,
             self.responses_buffer.size,
             self.patches_responses_buffer.size,
-        );
-        self.run_context();
+        )?;
+        self.run_context()?;
         let mut new_entries = vec![PointOffsetType::default(); requests.len()];
         self.download_staging_buffer
             .download_slice(&mut new_entries, 0)?;
@@ -729,19 +729,20 @@ impl GpuSearchContext {
     pub fn clear(&mut self, new_m: usize) -> OperationResult<()> {
         self.gpu_links.update_params(&mut self.context, new_m)?;
         self.gpu_links.clear(&mut self.context)?;
-        self.run_context();
+        self.run_context()?;
         Ok(())
     }
 
     pub fn apply_links_patch(&mut self) -> OperationResult<()> {
-        self.gpu_links.apply_gpu_patches(&mut self.context);
+        self.gpu_links.apply_gpu_patches(&mut self.context)?;
         self.is_dirty_links = false;
         Ok(())
     }
 
-    pub fn run_context(&mut self) {
-        self.context.run();
-        self.context.wait_finish(GPU_TIMEOUT);
+    pub fn run_context(&mut self) -> OperationResult<()> {
+        self.context.run()?;
+        self.context.wait_finish(GPU_TIMEOUT)?;
+        Ok(())
     }
 
     fn is_dirty(&self) -> bool {
@@ -849,7 +850,7 @@ mod tests {
             gpu_search_context.set_links(idx, &links).unwrap();
         }
         gpu_search_context.apply_links_patch().unwrap();
-        gpu_search_context.run_context();
+        gpu_search_context.run_context().unwrap();
 
         TestData {
             gpu_search_context,
@@ -1054,14 +1055,17 @@ mod tests {
         upload_staging_buffer
             .upload_slice(&search_requests, 0)
             .unwrap();
-        test.gpu_search_context.context.copy_gpu_buffer(
-            upload_staging_buffer.clone(),
-            search_requests_buffer.clone(),
-            0,
-            0,
-            search_requests_buffer.size,
-        );
-        test.gpu_search_context.run_context();
+        test.gpu_search_context
+            .context
+            .copy_gpu_buffer(
+                upload_staging_buffer.clone(),
+                search_requests_buffer.clone(),
+                0,
+                0,
+                search_requests_buffer.size,
+            )
+            .unwrap();
+        test.gpu_search_context.run_context().unwrap();
 
         // create response and response staging buffers
         let responses_buffer = gpu::Buffer::new(
@@ -1129,33 +1133,42 @@ mod tests {
             .build(test.gpu_search_context.device.clone())
             .unwrap();
 
-        test.gpu_search_context.context.bind_pipeline(
-            pipeline.clone(),
-            &[
-                descriptor_set.clone(),
-                test.gpu_search_context
-                    .gpu_vector_storage
-                    .descriptor_set
-                    .clone(),
-                test.gpu_search_context.gpu_links.descriptor_set.clone(),
-                test.gpu_search_context
-                    .gpu_visited_flags
-                    .descriptor_set
-                    .clone(),
-            ],
-        );
-        test.gpu_search_context.context.dispatch(groups_count, 1, 1);
-        test.gpu_search_context.run_context();
+        test.gpu_search_context
+            .context
+            .bind_pipeline(
+                pipeline.clone(),
+                &[
+                    descriptor_set.clone(),
+                    test.gpu_search_context
+                        .gpu_vector_storage
+                        .descriptor_set
+                        .clone(),
+                    test.gpu_search_context.gpu_links.descriptor_set.clone(),
+                    test.gpu_search_context
+                        .gpu_visited_flags
+                        .descriptor_set
+                        .clone(),
+                ],
+            )
+            .unwrap();
+        test.gpu_search_context
+            .context
+            .dispatch(groups_count, 1, 1)
+            .unwrap();
+        test.gpu_search_context.run_context().unwrap();
 
         // Download response
-        test.gpu_search_context.context.copy_gpu_buffer(
-            responses_buffer.clone(),
-            responses_staging_buffer.clone(),
-            0,
-            0,
-            responses_buffer.size,
-        );
-        test.gpu_search_context.run_context();
+        test.gpu_search_context
+            .context
+            .copy_gpu_buffer(
+                responses_buffer.clone(),
+                responses_staging_buffer.clone(),
+                0,
+                0,
+                responses_buffer.size,
+            )
+            .unwrap();
+        test.gpu_search_context.run_context().unwrap();
         let mut gpu_responses = vec![ScoredPointOffset::default(); groups_count * ef];
         responses_staging_buffer
             .download_slice(&mut gpu_responses, 0)

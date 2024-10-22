@@ -54,6 +54,12 @@ impl Buffer {
         buffer_type: BufferType,
         size: usize,
     ) -> GpuResult<Arc<Self>> {
+        if size == 0 {
+            return Err(GpuError::NotSupported(
+                "Zero-sized GPU buffers are not supported".to_string(),
+            ));
+        }
+
         // Vulkan API requires buffer usage flags to be specified during the buffer creation.
         let vk_usage_flags = match buffer_type {
             BufferType::Uniform => {
@@ -231,21 +237,20 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        // Drop the allocation and free the allocated memory
-        let mut allocation = Mutex::new(Allocation::default());
-        std::mem::swap(&mut allocation, &mut self.allocation);
-        let allocation = allocation.into_inner();
-        self.device.gpu_free(allocation);
+        if self.vk_buffer != vk::Buffer::null() {
+            // Drop the allocation and free the allocated memory.
+            let mut allocation = Mutex::new(Allocation::default());
+            std::mem::swap(&mut allocation, &mut self.allocation);
+            let allocation = allocation.into_inner();
+            self.device.gpu_free(allocation);
 
-        // Destroy the buffer
-        unsafe {
-            self.device
-                .vk_device
-                .destroy_buffer(self.vk_buffer, self.device.allocation_callbacks())
-        };
-
-        // Reset the buffer state
-        self.size = 0;
-        self.vk_buffer = vk::Buffer::null();
+            // Destroy the buffer.
+            unsafe {
+                self.device
+                    .vk_device
+                    .destroy_buffer(self.vk_buffer, self.device.allocation_callbacks())
+            };
+            self.vk_buffer = vk::Buffer::null();
+        }
     }
 }

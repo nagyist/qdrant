@@ -62,17 +62,17 @@ impl GpuLinks {
         };
         patch_buffer.upload(&params, 0)?;
 
-        let mut upload_context = gpu::Context::new(device.clone());
+        let mut upload_context = gpu::Context::new(device.clone())?;
         upload_context.copy_gpu_buffer(
             patch_buffer.clone(),
             params_buffer.clone(),
             0,
             0,
             std::mem::size_of::<GpuLinksParamsBuffer>(),
-        );
-        upload_context.clear_buffer(links_buffer.clone());
-        upload_context.run();
-        upload_context.wait_finish(GPU_TIMEOUT);
+        )?;
+        upload_context.clear_buffer(links_buffer.clone())?;
+        upload_context.run()?;
+        upload_context.wait_finish(GPU_TIMEOUT)?;
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
@@ -117,7 +117,7 @@ impl GpuLinks {
             links_patch_capacity,
             0,
             std::mem::size_of::<GpuLinksParamsBuffer>(),
-        );
+        )?;
         Ok(())
     }
 
@@ -125,11 +125,11 @@ impl GpuLinks {
         if !self.patched_points.is_empty() {
             self.patched_points.clear();
         }
-        gpu_context.clear_buffer(self.links_buffer.clone());
+        gpu_context.clear_buffer(self.links_buffer.clone())?;
         Ok(())
     }
 
-    pub fn apply_gpu_patches(&mut self, gpu_context: &mut gpu::Context) {
+    pub fn apply_gpu_patches(&mut self, gpu_context: &mut gpu::Context) -> OperationResult<()> {
         for (i, &(patched_point_id, patched_links_count)) in self.patched_points.iter().enumerate()
         {
             let patch_start_index =
@@ -144,9 +144,10 @@ impl GpuLinks {
                 patch_start_index,
                 links_start_index,
                 patch_size,
-            );
+            )?;
         }
         self.patched_points.clear();
+        Ok(())
     }
 
     pub fn set_links(
@@ -178,8 +179,8 @@ impl GpuLinks {
     ) -> OperationResult<()> {
         self.update_params(context, graph_layers_builder.get_m(level))?;
         self.clear(context)?;
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context.run()?;
+        context.wait_finish(GPU_TIMEOUT)?;
 
         let timer = std::time::Instant::now();
         let points: Vec<_> = (0..graph_layers_builder.links_layers.len())
@@ -198,9 +199,9 @@ impl GpuLinks {
                 let links = graph_layers_builder.links_layers[point_id][level].read();
                 self.set_links(point_id as PointOffsetType, &links)?;
             }
-            self.apply_gpu_patches(context);
-            context.run();
-            context.wait_finish(GPU_TIMEOUT);
+            self.apply_gpu_patches(context)?;
+            context.run()?;
+            context.wait_finish(GPU_TIMEOUT)?;
         }
 
         log::trace!("Upload links on level {level} time: {:?}", timer.elapsed());
@@ -242,10 +243,10 @@ impl GpuLinks {
                     point_id as usize * links_size,
                     i * links_size,
                     links_size,
-                );
+                )?;
             }
-            context.run();
-            context.wait_finish(GPU_TIMEOUT);
+            context.run()?;
+            context.wait_finish(GPU_TIMEOUT)?;
 
             let mut links =
                 vec![PointOffsetType::default(); chunk_size * (self.links_capacity + 1)];

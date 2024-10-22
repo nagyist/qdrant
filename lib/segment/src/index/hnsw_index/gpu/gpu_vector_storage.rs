@@ -443,7 +443,7 @@ impl GpuVectorStorage {
             .collect::<gpu::GpuResult<Vec<_>>>()?;
         log::trace!("Storage buffer size {}", vectors_buffer[0].size);
 
-        let mut upload_context = gpu::Context::new(device.clone());
+        let mut upload_context = gpu::Context::new(device.clone())?;
         let staging_buffer = gpu::Buffer::new(
             device.clone(),
             "Vector storage upload staging buffer",
@@ -483,9 +483,9 @@ impl GpuVectorStorage {
                         0,
                         gpu_offset,
                         upload_size,
-                    );
-                    upload_context.run();
-                    upload_context.wait_finish(GPU_TIMEOUT);
+                    )?;
+                    upload_context.run()?;
+                    upload_context.wait_finish(GPU_TIMEOUT)?;
 
                     log::trace!(
                         "Uploaded {} vectors, {} MB",
@@ -505,9 +505,9 @@ impl GpuVectorStorage {
                     0,
                     gpu_offset,
                     upload_size,
-                );
-                upload_context.run();
-                upload_context.wait_finish(GPU_TIMEOUT);
+                )?;
+                upload_context.run()?;
+                upload_context.wait_finish(GPU_TIMEOUT)?;
 
                 log::trace!(
                     "Uploaded {} vectors, {} MB",
@@ -606,7 +606,7 @@ impl GpuVectorStorage {
             sq_offsets_buffer.size,
         )?;
 
-        let mut upload_context = gpu::Context::new(device.clone());
+        let mut upload_context = gpu::Context::new(device.clone())?;
 
         for i in 0..count {
             let (offset, _) = quantized_storage.get_quantized_vector(i as PointOffsetType);
@@ -619,9 +619,9 @@ impl GpuVectorStorage {
             0,
             0,
             sq_offsets_buffer.size,
-        );
-        upload_context.run();
-        upload_context.wait_finish(GPU_TIMEOUT);
+        )?;
+        upload_context.run()?;
+        upload_context.wait_finish(GPU_TIMEOUT)?;
 
         Ok(sq_offsets_buffer)
     }
@@ -661,7 +661,7 @@ impl GpuVectorStorage {
             vector_division_buffer.size,
         )?;
 
-        let mut upload_context = gpu::Context::new(device.clone());
+        let mut upload_context = gpu::Context::new(device.clone())?;
 
         let mut centroids_offset = 0;
         for centroids in &quantized_storage.get_metadata().centroids {
@@ -675,7 +675,7 @@ impl GpuVectorStorage {
             0,
             0,
             centroids_buffer.size,
-        );
+        )?;
 
         let vector_division: Vec<_> = quantized_storage
             .get_metadata()
@@ -691,10 +691,10 @@ impl GpuVectorStorage {
             0,
             0,
             vector_division_buffer.size,
-        );
+        )?;
 
-        upload_context.run();
-        upload_context.wait_finish(GPU_TIMEOUT);
+        upload_context.run()?;
+        upload_context.wait_finish(GPU_TIMEOUT)?;
 
         Ok(GpuProductQuantization {
             centroids_buffer,
@@ -833,16 +833,18 @@ mod tests {
             .build(device.clone())
             .unwrap();
 
-        let mut context = gpu::Context::new(device.clone());
-        context.bind_pipeline(
-            pipeline,
-            &[descriptor_set, gpu_vector_storage.descriptor_set.clone()],
-        );
-        context.dispatch(num_vectors, 1, 1);
+        let mut context = gpu::Context::new(device.clone()).unwrap();
+        context
+            .bind_pipeline(
+                pipeline,
+                &[descriptor_set, gpu_vector_storage.descriptor_set.clone()],
+            )
+            .unwrap();
+        context.dispatch(num_vectors, 1, 1).unwrap();
 
         let timer = std::time::Instant::now();
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
         log::trace!("GPU scoring time = {:?}", timer.elapsed());
 
         let staging_buffer = gpu::Buffer::new(
@@ -852,15 +854,17 @@ mod tests {
             num_vectors * std::mem::size_of::<f32>(),
         )
         .unwrap();
-        context.copy_gpu_buffer(
-            scores_buffer,
-            staging_buffer.clone(),
-            0,
-            0,
-            num_vectors * std::mem::size_of::<f32>(),
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .copy_gpu_buffer(
+                scores_buffer,
+                staging_buffer.clone(),
+                0,
+                0,
+                num_vectors * std::mem::size_of::<f32>(),
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
 
         let mut scores = vec![0.0f32; num_vectors];
         staging_buffer.download_slice(&mut scores, 0).unwrap();
@@ -996,16 +1000,18 @@ mod tests {
             .build(device.clone())
             .unwrap();
 
-        let mut context = gpu::Context::new(device.clone());
-        context.bind_pipeline(
-            pipeline,
-            &[descriptor_set, gpu_vector_storage.descriptor_set.clone()],
-        );
-        context.dispatch(num_vectors, 1, 1);
+        let mut context = gpu::Context::new(device.clone()).unwrap();
+        context
+            .bind_pipeline(
+                pipeline,
+                &[descriptor_set, gpu_vector_storage.descriptor_set.clone()],
+            )
+            .unwrap();
+        context.dispatch(num_vectors, 1, 1).unwrap();
 
         let timer = std::time::Instant::now();
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
         log::trace!("GPU scoring time = {:?}", timer.elapsed());
 
         let staging_buffer = gpu::Buffer::new(
@@ -1015,15 +1021,17 @@ mod tests {
             num_vectors * std::mem::size_of::<f32>(),
         )
         .unwrap();
-        context.copy_gpu_buffer(
-            scores_buffer,
-            staging_buffer.clone(),
-            0,
-            0,
-            num_vectors * std::mem::size_of::<f32>(),
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .copy_gpu_buffer(
+                scores_buffer,
+                staging_buffer.clone(),
+                0,
+                0,
+                num_vectors * std::mem::size_of::<f32>(),
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
 
         let mut scores = vec![0.0f32; num_vectors];
         staging_buffer.download_slice(&mut scores, 0).unwrap();
@@ -1132,16 +1140,18 @@ mod tests {
             .build(device.clone())
             .unwrap();
 
-        let mut context = gpu::Context::new(device.clone());
-        context.bind_pipeline(
-            pipeline,
-            &[descriptor_set, gpu_vector_storage.descriptor_set.clone()],
-        );
-        context.dispatch(num_vectors, 1, 1);
+        let mut context = gpu::Context::new(device.clone()).unwrap();
+        context
+            .bind_pipeline(
+                pipeline,
+                &[descriptor_set, gpu_vector_storage.descriptor_set.clone()],
+            )
+            .unwrap();
+        context.dispatch(num_vectors, 1, 1).unwrap();
 
         let timer = std::time::Instant::now();
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
         log::trace!("GPU scoring time = {:?}", timer.elapsed());
 
         let staging_buffer = gpu::Buffer::new(
@@ -1151,15 +1161,17 @@ mod tests {
             num_vectors * std::mem::size_of::<f32>(),
         )
         .unwrap();
-        context.copy_gpu_buffer(
-            scores_buffer,
-            staging_buffer.clone(),
-            0,
-            0,
-            num_vectors * std::mem::size_of::<f32>(),
-        );
-        context.run();
-        context.wait_finish(GPU_TIMEOUT);
+        context
+            .copy_gpu_buffer(
+                scores_buffer,
+                staging_buffer.clone(),
+                0,
+                0,
+                num_vectors * std::mem::size_of::<f32>(),
+            )
+            .unwrap();
+        context.run().unwrap();
+        context.wait_finish(GPU_TIMEOUT).unwrap();
 
         let mut scores = vec![0.0f32; num_vectors];
         staging_buffer.download_slice(&mut scores, 0).unwrap();
