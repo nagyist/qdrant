@@ -55,9 +55,8 @@ mod tests {
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance =
             Arc::new(gpu::Instance::new("qdrant", Some(&debug_messenger), None, false).unwrap());
-        let device = Arc::new(
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap(),
-        );
+        let device =
+            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
 
         let gpu_candidates_heap = GpuCandidatesHeap::new(device.clone(), capacity).unwrap();
 
@@ -136,13 +135,15 @@ mod tests {
             .add_uniform_buffer(0)
             .add_storage_buffer(1)
             .add_storage_buffer(2)
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let descriptor_set = gpu::DescriptorSet::builder(descriptor_set_layout.clone())
             .add_uniform_buffer(0, test_params_buffer.clone())
             .add_storage_buffer(1, input_points_buffer.clone())
             .add_storage_buffer(2, scores_output_buffer.clone())
-            .build();
+            .build()
+            .unwrap();
 
         let pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, descriptor_set_layout.clone())

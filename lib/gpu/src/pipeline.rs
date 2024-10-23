@@ -57,7 +57,7 @@ impl Pipeline {
         let vk_pipeline_layout = unsafe {
             device.vk_device.create_pipeline_layout(
                 &vk_pipeline_layout_create_info,
-                device.allocation_callbacks(),
+                device.cpu_allocation_callbacks(),
             )?
         };
 
@@ -106,7 +106,7 @@ impl Pipeline {
             device.vk_device.create_compute_pipelines(
                 vk::PipelineCache::null(),
                 &[vk_compute_pipeline_create_info],
-                device.allocation_callbacks(),
+                device.cpu_allocation_callbacks(),
             )
         };
 
@@ -126,9 +126,10 @@ impl Pipeline {
             Err(error) => {
                 // if we failed to create the pipeline, we need to destroy the pipeline layout.
                 unsafe {
-                    device
-                        .vk_device
-                        .destroy_pipeline_layout(vk_pipeline_layout, device.allocation_callbacks());
+                    device.vk_device.destroy_pipeline_layout(
+                        vk_pipeline_layout,
+                        device.cpu_allocation_callbacks(),
+                    );
                 }
                 Err(GpuError::from(error.1))
             }
@@ -142,7 +143,7 @@ impl Drop for Pipeline {
             unsafe {
                 self.device
                     .vk_device
-                    .destroy_pipeline(self.vk_pipeline, self.device.allocation_callbacks());
+                    .destroy_pipeline(self.vk_pipeline, self.device.cpu_allocation_callbacks());
             }
             self.vk_pipeline = vk::Pipeline::null();
         }
@@ -151,7 +152,7 @@ impl Drop for Pipeline {
             unsafe {
                 self.device.vk_device.destroy_pipeline_layout(
                     self.vk_pipeline_layout,
-                    self.device.allocation_callbacks(),
+                    self.device.cpu_allocation_callbacks(),
                 );
             }
             self.vk_pipeline_layout = vk::PipelineLayout::null();

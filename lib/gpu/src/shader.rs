@@ -31,9 +31,10 @@ impl Shader {
             .code(&shader_code)
             .build();
         let shader_module = unsafe {
-            device
-                .vk_device
-                .create_shader_module(&shader_module_create_info, device.allocation_callbacks())?
+            device.vk_device.create_shader_module(
+                &shader_module_create_info,
+                device.cpu_allocation_callbacks(),
+            )?
         };
 
         Ok(Self {
@@ -49,7 +50,7 @@ impl Drop for Shader {
             unsafe {
                 self.device.vk_device.destroy_shader_module(
                     self.vk_shader_module,
-                    self.device.allocation_callbacks(),
+                    self.device.cpu_allocation_callbacks(),
                 );
             }
             self.vk_shader_module = vk::ShaderModule::null();

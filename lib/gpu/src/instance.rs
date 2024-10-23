@@ -172,7 +172,7 @@ impl Instance {
         self.vk_debug_utils_loader.is_some()
     }
 
-    pub fn allocation_callbacks(&self) -> Option<&vk::AllocationCallbacks> {
+    pub fn cpu_allocation_callbacks(&self) -> Option<&vk::AllocationCallbacks> {
         self.allocation_callbacks
             .as_ref()
             .map(|alloc| alloc.allocation_callbacks())
@@ -216,7 +216,7 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
-        let allocation_callbacks = self.allocation_callbacks();
+        let allocation_callbacks = self.cpu_allocation_callbacks();
         unsafe {
             if let Some(loader) = &self.vk_debug_utils_loader {
                 if self.vk_debug_messenger != vk::DebugUtilsMessengerEXT::null() {

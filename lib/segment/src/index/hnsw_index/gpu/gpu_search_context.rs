@@ -172,13 +172,13 @@ impl GpuSearchContext {
         let greedy_descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
             .add_storage_buffer(1)
-            .build(device.clone());
+            .build(device.clone())?;
 
         let greedy_descriptor_set =
             gpu::DescriptorSet::builder(greedy_descriptor_set_layout.clone())
                 .add_storage_buffer(0, requests_buffer.clone())
                 .add_storage_buffer(1, responses_buffer.clone())
-                .build();
+                .build()?;
 
         let greedy_pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, greedy_descriptor_set_layout.clone())
@@ -191,13 +191,13 @@ impl GpuSearchContext {
         let search_descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
             .add_storage_buffer(1)
-            .build(device.clone());
+            .build(device.clone())?;
 
         let search_descriptor_set =
             gpu::DescriptorSet::builder(search_descriptor_set_layout.clone())
                 .add_storage_buffer(0, requests_buffer.clone())
                 .add_storage_buffer(1, search_responses_buffer.clone())
-                .build();
+                .build()?;
 
         let search_pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, search_descriptor_set_layout.clone())
@@ -211,14 +211,14 @@ impl GpuSearchContext {
             .add_storage_buffer(0)
             .add_storage_buffer(1)
             .add_storage_buffer(2)
-            .build(device.clone());
+            .build(device.clone())?;
 
         let patches_descriptor_set =
             gpu::DescriptorSet::builder(patches_descriptor_set_layout.clone())
                 .add_storage_buffer(0, requests_buffer.clone())
                 .add_storage_buffer(1, patches_responses_buffer.clone())
                 .add_storage_buffer(2, responses_buffer.clone())
-                .build();
+                .build()?;
 
         let patches_pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, patches_descriptor_set_layout.clone())
@@ -232,14 +232,14 @@ impl GpuSearchContext {
             .add_storage_buffer(0)
             .add_storage_buffer(1)
             .add_storage_buffer(2)
-            .build(device.clone());
+            .build(device.clone())?;
 
         let insert_descriptor_set =
             gpu::DescriptorSet::builder(insert_descriptor_set_layout.clone())
                 .add_storage_buffer(0, requests_buffer.clone())
                 .add_storage_buffer(1, responses_buffer.clone())
                 .add_storage_buffer(2, insert_atomics_buffer.clone())
-                .build();
+                .build()?;
 
         let insert_pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, insert_descriptor_set_layout.clone())
@@ -826,9 +826,9 @@ mod tests {
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance =
             Arc::new(gpu::Instance::new("qdrant", Some(&debug_messenger), None, false).unwrap());
-        let device = Arc::new(
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap(),
-        );
+        let device =
+            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+
         let mut gpu_search_context = GpuSearchContext::new(
             device,
             groups_count,
@@ -1099,12 +1099,14 @@ mod tests {
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
             .add_storage_buffer(1)
-            .build(test.gpu_search_context.device.clone());
+            .build(test.gpu_search_context.device.clone())
+            .unwrap();
 
         let descriptor_set = gpu::DescriptorSet::builder(descriptor_set_layout.clone())
             .add_storage_buffer(0, search_requests_buffer.clone())
             .add_storage_buffer(1, responses_buffer.clone())
-            .build();
+            .build()
+            .unwrap();
 
         let pipeline = gpu::Pipeline::builder()
             .add_descriptor_set_layout(0, descriptor_set_layout.clone())

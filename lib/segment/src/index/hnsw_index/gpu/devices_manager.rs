@@ -37,16 +37,23 @@ impl DevicesMaganer {
                     .skip(start_index)
                     .take(count)
                     .filter_map(|physical_device| {
-                        if let Some(device) = gpu::Device::new_with_queue_index(
+                        match gpu::Device::new_with_queue_index(
                             instance.clone(),
                             physical_device.clone(),
                             queue_index,
                         ) {
-                            log::info!("Initialized GPU device: {:?}", &physical_device.name);
-                            Some(Mutex::new(Arc::new(device)))
-                        } else {
-                            log::error!("Failed to create GPU device: {:?}", &physical_device.name);
-                            None
+                            Ok(device) => {
+                                log::info!("Initialized GPU device: {:?}", &physical_device.name);
+                                Some(Mutex::new(device))
+                            }
+                            Err(err) => {
+                                log::error!(
+                                    "Failed to create GPU device: {:?}, error: {:?}",
+                                    &physical_device.name,
+                                    err
+                                );
+                                None
+                            }
                         }
                     }),
             );

@@ -77,12 +77,12 @@ impl GpuLinks {
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_uniform_buffer(0)
             .add_storage_buffer(1)
-            .build(device.clone());
+            .build(device.clone())?;
 
         let descriptor_set = gpu::DescriptorSet::builder(descriptor_set_layout.clone())
             .add_uniform_buffer(0, params_buffer.clone())
             .add_storage_buffer(1, links_buffer.clone())
-            .build();
+            .build()?;
 
         Ok(Self {
             m,

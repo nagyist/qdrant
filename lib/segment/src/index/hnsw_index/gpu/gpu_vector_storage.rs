@@ -543,7 +543,7 @@ impl GpuVectorStorage {
             }
             None => {}
         }
-        let descriptor_set_layout = descriptor_set_layout_builder.build(device.clone());
+        let descriptor_set_layout = descriptor_set_layout_builder.build(device.clone())?;
 
         let mut descriptor_set_builder = gpu::DescriptorSet::builder(descriptor_set_layout.clone());
         for (i, vector_buffer) in vectors_buffer.iter().enumerate() {
@@ -563,7 +563,7 @@ impl GpuVectorStorage {
             }
             None => {}
         }
-        let descriptor_set = descriptor_set_builder.build();
+        let descriptor_set = descriptor_set_builder.build()?;
 
         Ok(Self {
             device,
@@ -797,9 +797,8 @@ mod tests {
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance =
             Arc::new(gpu::Instance::new("qdrant", Some(&debug_messenger), None, false).unwrap());
-        let device = Arc::new(
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap(),
-        );
+        let device =
+            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
 
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, None, force_half_precision).unwrap();
@@ -814,11 +813,13 @@ mod tests {
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let descriptor_set = gpu::DescriptorSet::builder(descriptor_set_layout.clone())
             .add_storage_buffer(0, scores_buffer.clone())
-            .build();
+            .build()
+            .unwrap();
 
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_vector_storage.comp"))
@@ -959,9 +960,8 @@ mod tests {
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance =
             Arc::new(gpu::Instance::new("qdrant", Some(&debug_messenger), None, false).unwrap());
-        let device = Arc::new(
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap(),
-        );
+        let device =
+            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
 
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, Some(&quantized_vectors), false)
@@ -981,11 +981,13 @@ mod tests {
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let descriptor_set = gpu::DescriptorSet::builder(descriptor_set_layout.clone())
             .add_storage_buffer(0, scores_buffer.clone())
-            .build();
+            .build()
+            .unwrap();
 
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_vector_storage.comp"))
@@ -1099,9 +1101,8 @@ mod tests {
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance =
             Arc::new(gpu::Instance::new("qdrant", Some(&debug_messenger), None, false).unwrap());
-        let device = Arc::new(
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap(),
-        );
+        let device =
+            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
 
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, Some(&quantized_vectors), false)
@@ -1121,11 +1122,13 @@ mod tests {
 
         let descriptor_set_layout = gpu::DescriptorSetLayout::builder()
             .add_storage_buffer(0)
-            .build(device.clone());
+            .build(device.clone())
+            .unwrap();
 
         let descriptor_set = gpu::DescriptorSet::builder(descriptor_set_layout.clone())
             .add_storage_buffer(0, scores_buffer.clone())
-            .build();
+            .build()
+            .unwrap();
 
         let shader = ShaderBuilder::new(device.clone())
             .with_shader_code(include_str!("shaders/tests/test_vector_storage.comp"))

@@ -96,14 +96,14 @@ impl Buffer {
         let vk_buffer = unsafe {
             device
                 .vk_device
-                .create_buffer(&vk_info, device.allocation_callbacks())
+                .create_buffer(&vk_info, device.cpu_allocation_callbacks())
                 .unwrap()
         };
 
         // Allocate memory for the buffer.
         let buffer_allocation_requirements =
             unsafe { device.vk_device.get_buffer_memory_requirements(vk_buffer) };
-        let allocation_result = device.gpu_alloc(&AllocationCreateDesc {
+        let allocation_result = device.allocate(&AllocationCreateDesc {
             name: name.as_ref(),
             requirements: buffer_allocation_requirements,
             location,
@@ -119,7 +119,7 @@ impl Buffer {
                     // we need to destroy the buffer in case of an allocation error.
                     device
                         .vk_device
-                        .destroy_buffer(vk_buffer, device.allocation_callbacks());
+                        .destroy_buffer(vk_buffer, device.cpu_allocation_callbacks());
                 }
                 return Err(e);
             }
@@ -133,12 +133,12 @@ impl Buffer {
         };
         if let Err(e) = bind_result {
             // Free the allocated memory in case of an error.
-            device.gpu_free(allocation);
+            device.free(allocation);
             unsafe {
                 // Destroy the buffer.
                 device
                     .vk_device
-                    .destroy_buffer(vk_buffer, device.allocation_callbacks());
+                    .destroy_buffer(vk_buffer, device.cpu_allocation_callbacks());
             }
             return Err(GpuError::from(e));
         }
@@ -242,13 +242,13 @@ impl Drop for Buffer {
             let mut allocation = Mutex::new(Allocation::default());
             std::mem::swap(&mut allocation, &mut self.allocation);
             let allocation = allocation.into_inner();
-            self.device.gpu_free(allocation);
+            self.device.free(allocation);
 
             // Destroy the buffer.
             unsafe {
                 self.device
                     .vk_device
-                    .destroy_buffer(self.vk_buffer, self.device.allocation_callbacks())
+                    .destroy_buffer(self.vk_buffer, self.device.cpu_allocation_callbacks())
             };
             self.vk_buffer = vk::Buffer::null();
         }
