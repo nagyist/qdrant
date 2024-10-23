@@ -10,10 +10,9 @@ static DROP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 6
 /// GPU execution context.
 /// It records commands and run them on GPU.
 /// It keeps track of resources used in the commands.
-///
 /// Warnings!
-/// 1. Context is not thread safe.
-/// 2. Execution order is not guaranteed. Don't rely on it.
+/// Context is not thread safe.
+/// Execution order is not guaranteed. Don't rely on it.
 /// If you need to run commands in specific order, use `wait_finish` method.
 /// And start next command after previous one is finished.
 pub struct Context {
@@ -85,12 +84,7 @@ impl Context {
             resources: Vec::new(),
         };
 
-        if let Err(e) = context.init_command_buffer() {
-            // If command buffer creation failed, return error.
-            // Drop function will clean up created resources.
-            return Err(GpuError::from(e));
-        }
-
+        context.init_command_buffer()?;
         Ok(context)
     }
 
