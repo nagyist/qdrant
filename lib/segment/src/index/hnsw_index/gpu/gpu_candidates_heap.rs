@@ -53,8 +53,7 @@ mod tests {
             .collect();
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
-        let instance =
-            Arc::new(gpu::Instance::new("qdrant", Some(&debug_messenger), None, false).unwrap());
+        let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
         let device =
             gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
 
