@@ -56,8 +56,7 @@ mod tests {
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let gpu_nearest_heap = GpuNearestHeap::new(device.clone(), ef, ef).unwrap();
 
@@ -92,7 +91,7 @@ mod tests {
                 input_points_buffer.clone(),
                 0,
                 0,
-                input_points_buffer.size,
+                input_points_buffer.size(),
             )
             .unwrap();
         context.run().unwrap();
@@ -119,7 +118,7 @@ mod tests {
                 test_params_buffer.clone(),
                 0,
                 0,
-                test_params_buffer.size,
+                test_params_buffer.size(),
             )
             .unwrap();
         context.run().unwrap();
@@ -173,7 +172,7 @@ mod tests {
             device.clone(),
             "Nearest heap download staging buffer",
             gpu::BufferType::GpuToCpu,
-            std::cmp::max(scores_output_buffer.size, sorted_output_buffer.size),
+            std::cmp::max(scores_output_buffer.size(), sorted_output_buffer.size()),
         )
         .unwrap();
         context
@@ -182,7 +181,7 @@ mod tests {
                 download_staging_buffer.clone(),
                 0,
                 0,
-                scores_output_buffer.size,
+                scores_output_buffer.size(),
             )
             .unwrap();
         context.run().unwrap();

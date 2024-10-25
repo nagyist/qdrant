@@ -1,3 +1,5 @@
+#![cfg(feature = "gpu")]
+
 pub mod allocation_callbacks;
 pub use allocation_callbacks::*;
 
@@ -25,12 +27,12 @@ pub use instance::*;
 pub mod pipeline;
 pub use pipeline::*;
 
-pub mod pipeline_builder;
-pub use pipeline_builder::*;
-
 pub mod shader;
 use ash::vk;
 pub use shader::*;
+
+#[cfg(test)]
+mod basic_test;
 
 /// A trait for GPU resources.
 /// It's used keep GPU resources alive while they are in use by the GPU context.
@@ -46,7 +48,7 @@ pub enum GpuError {
     /// Warning. This error doesn't handle shader out of bounds access.
     OutOfBounds(String),
 
-    /// Some of requiered hardware features are not supported by the GPU.
+    /// Some of required hardware features are not supported by the GPU.
     NotSupported(String),
 
     /// A fence or query has not yet completed.

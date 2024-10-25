@@ -17,7 +17,7 @@ default-run = "qdrant"
 workspace = true
 
 [features]
-default = ["web", "parking_lot"]
+default = ["web", "parking_lot", "gpu"]
 web = ["actix-web"]
 multiling-chinese = ["segment/multiling-chinese"]
 multiling-japanese = ["segment/multiling-japanese"]
@@ -37,6 +37,7 @@ tokio-tracing = ["tokio/tracing"]
 stacktrace = ["rstack-self"]
 chaos-testing = []
 data-consistency-check = ["collection/data-consistency-check"]
+gpu = ["gpu/gpu", "segment/gpu"]
 
 [dev-dependencies]
 serde_urlencoded = "0.7"
@@ -102,13 +103,13 @@ cancel = { path = "lib/common/cancel" }
 memory = { path = "lib/common/memory" }
 issues = { path = "lib/common/issues" }
 quantization = { path = "lib/quantization" }
-gpu = { path = "lib/gpu" }
 segment = { path = "lib/segment" }
 collection = { path = "lib/collection" }
 storage = { path = "lib/storage" }
 api = { path = "lib/api" }
 actix-multipart = "0.7.2"
 constant_time_eq = "0.3.1"
+gpu = { path = "lib/gpu" }
 
 # Profiling
 tracing = { workspace = true }

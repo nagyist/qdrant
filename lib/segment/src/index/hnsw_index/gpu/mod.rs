@@ -65,11 +65,11 @@ fn create_gpu_device() -> OperationResult<Arc<gpu::Device>> {
     let instance = GPU_INSTANCE.clone()?;
     let filter = GPU_DEVICE_FILER.lock().clone();
 
-    for physical_device in &instance.vk_physical_devices {
+    for physical_device in instance.physical_devices() {
         let device_name = physical_device.name.to_owned();
         if filter.is_empty() || device_name.contains(&filter) {
             log::info!("Found GPU device: {}", device_name);
-            return Ok(gpu::Device::new(instance.clone(), physical_device.clone())?);
+            return Ok(gpu::Device::new(instance.clone(), physical_device)?);
         }
     }
 

@@ -54,8 +54,7 @@ mod tests {
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let gpu_candidates_heap = GpuCandidatesHeap::new(device.clone(), capacity).unwrap();
 
@@ -89,7 +88,7 @@ mod tests {
                 input_points_buffer.clone(),
                 0,
                 0,
-                input_points_buffer.size,
+                input_points_buffer.size(),
             )
             .unwrap();
         context.run().unwrap();
@@ -116,7 +115,7 @@ mod tests {
                 test_params_buffer.clone(),
                 0,
                 0,
-                test_params_buffer.size,
+                test_params_buffer.size(),
             )
             .unwrap();
         context.run().unwrap();
@@ -173,7 +172,7 @@ mod tests {
             device.clone(),
             "Candidates heap download staging buffer",
             gpu::BufferType::GpuToCpu,
-            scores_output_buffer.size,
+            scores_output_buffer.size(),
         )
         .unwrap();
         context
@@ -182,7 +181,7 @@ mod tests {
                 download_staging_buffer.clone(),
                 0,
                 0,
-                scores_output_buffer.size,
+                scores_output_buffer.size(),
             )
             .unwrap();
         context.run().unwrap();

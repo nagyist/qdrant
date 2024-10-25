@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ash::vk;
-use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc};
+use gpu_allocator::vulkan::{Allocation, AllocationCreateDesc, AllocationScheme};
 use gpu_allocator::MemoryLocation;
 use parking_lot::Mutex;
 
@@ -13,19 +13,19 @@ static UPLOAD_NOT_ALLOWED_ERROR: &str = "Upload to the GPU buffer is not allowed
 /// Buffer is a GPU resource that represents a linear memory region.
 pub struct Buffer {
     /// Device that owns the buffer.
-    pub device: Arc<Device>,
+    device: Arc<Device>,
 
     /// Vulkan buffer handle.
-    pub vk_buffer: vk::Buffer,
+    vk_buffer: vk::Buffer,
 
     /// Buffer type. It defines how the buffer can be used.
-    pub buffer_type: BufferType,
+    buffer_type: BufferType,
 
     /// Buffer size in bytes.
-    pub size: usize,
+    size: usize,
 
     /// GPU memory allocation that backs the buffer.
-    pub allocation: Mutex<Allocation>,
+    allocation: Mutex<Allocation>,
 }
 
 /// Buffer type defines how the buffer can be used.
@@ -89,25 +89,26 @@ impl Buffer {
         };
 
         // Create a Vulkan buffer.
-        let vk_info = vk::BufferCreateInfo::builder()
+        let vk_create_buffer_info = vk::BufferCreateInfo::default()
             .size(size as vk::DeviceSize)
             .usage(vk_usage_flags)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
         let vk_buffer = unsafe {
             device
-                .vk_device
-                .create_buffer(&vk_info, device.cpu_allocation_callbacks())
+                .vk_device()
+                .create_buffer(&vk_create_buffer_info, device.cpu_allocation_callbacks())
                 .unwrap()
         };
 
         // Allocate memory for the buffer.
         let buffer_allocation_requirements =
-            unsafe { device.vk_device.get_buffer_memory_requirements(vk_buffer) };
+            unsafe { device.vk_device().get_buffer_memory_requirements(vk_buffer) };
         let allocation_result = device.allocate(&AllocationCreateDesc {
             name: name.as_ref(),
             requirements: buffer_allocation_requirements,
             location,
             linear: true, // Buffers are always linear.
+            allocation_scheme: AllocationScheme::GpuAllocatorManaged,
         });
 
         // Check if the allocation was successful.
@@ -118,7 +119,7 @@ impl Buffer {
                     // Because vulkan buffers lifetime is managed manually,
                     // we need to destroy the buffer in case of an allocation error.
                     device
-                        .vk_device
+                        .vk_device()
                         .destroy_buffer(vk_buffer, device.cpu_allocation_callbacks());
                 }
                 return Err(e);
@@ -127,9 +128,11 @@ impl Buffer {
 
         // Bind the buffer to the allocated memory.
         let bind_result = unsafe {
-            device
-                .vk_device
-                .bind_buffer_memory(vk_buffer, allocation.memory(), allocation.offset())
+            device.vk_device().bind_buffer_memory(
+                vk_buffer,
+                allocation.memory(),
+                allocation.offset(),
+            )
         };
         if let Err(e) = bind_result {
             // Free the allocated memory in case of an error.
@@ -137,7 +140,7 @@ impl Buffer {
             unsafe {
                 // Destroy the buffer.
                 device
-                    .vk_device
+                    .vk_device()
                     .destroy_buffer(vk_buffer, device.cpu_allocation_callbacks());
             }
             return Err(GpuError::from(e));
@@ -150,6 +153,18 @@ impl Buffer {
             size,
             allocation: Mutex::new(allocation),
         }))
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn vk_buffer(&self) -> vk::Buffer {
+        self.vk_buffer
+    }
+
+    pub fn buffer_type(&self) -> BufferType {
+        self.buffer_type
     }
 
     /// Download data from the buffer to the RAM.
@@ -180,7 +195,7 @@ impl Buffer {
 
         if data.len() + offset > self.size {
             return Err(GpuError::OutOfBounds(
-                "Out of bounds while dowloading from GPU".to_string(),
+                "Out of bounds while downloading from GPU".to_string(),
             ));
         }
 
@@ -247,7 +262,7 @@ impl Drop for Buffer {
             // Destroy the buffer.
             unsafe {
                 self.device
-                    .vk_device
+                    .vk_device()
                     .destroy_buffer(self.vk_buffer, self.device.cpu_allocation_callbacks())
             };
             self.vk_buffer = vk::Buffer::null();

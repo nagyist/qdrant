@@ -27,19 +27,18 @@ impl DevicesMaganer {
         for queue_index in 0..parallel_indexes {
             devices.extend(
                 instance
-                    .vk_physical_devices
+                    .physical_devices()
                     .iter()
                     .filter(|device| {
                         let device_name = device.name.to_lowercase();
                         device_name.contains(&filter)
                     })
-                    .cloned()
                     .skip(start_index)
                     .take(count)
                     .filter_map(|physical_device| {
                         match gpu::Device::new_with_queue_index(
                             instance.clone(),
-                            physical_device.clone(),
+                            physical_device,
                             queue_index,
                         ) {
                             Ok(device) => {

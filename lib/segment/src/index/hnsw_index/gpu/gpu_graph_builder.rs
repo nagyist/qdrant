@@ -199,8 +199,7 @@ mod tests {
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let ids = (0..num_vectors as PointOffsetType).collect();
         build_hnsw_on_gpu(

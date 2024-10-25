@@ -97,7 +97,7 @@ impl GpuVisitedFlags {
             self.params_buffer.clone(),
             0,
             0,
-            self.params_buffer.size,
+            self.params_buffer.size(),
         )?;
         Ok(())
     }

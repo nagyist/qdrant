@@ -352,13 +352,13 @@ impl GpuSearchContext {
             device.clone(),
             "Search context upload staging buffer",
             gpu::BufferType::CpuToGpu,
-            requests_buffer.size,
+            requests_buffer.size(),
         )?;
         let download_staging_buffer = gpu::Buffer::new(
             device.clone(),
             "Search context download staging buffer",
             gpu::BufferType::GpuToCpu,
-            patches_responses_buffer.size + responses_buffer.size,
+            patches_responses_buffer.size() + responses_buffer.size(),
         )?;
 
         let search_responses_buffer = gpu::Buffer::new(
@@ -656,8 +656,8 @@ impl GpuSearchContext {
             self.patches_responses_buffer.clone(),
             self.download_staging_buffer.clone(),
             0,
-            self.responses_buffer.size,
-            self.patches_responses_buffer.size,
+            self.responses_buffer.size(),
+            self.patches_responses_buffer.size(),
         )?;
         self.run_context()?;
         let mut new_entries = vec![PointOffsetType::default(); requests.len()];
@@ -666,11 +666,11 @@ impl GpuSearchContext {
 
         let mut patches_data = vec![
             PointOffsetType::default();
-            self.patches_responses_buffer.size
+            self.patches_responses_buffer.size()
                 / std::mem::size_of::<PointOffsetType>()
         ];
         self.download_staging_buffer
-            .download_slice(&mut patches_data, self.responses_buffer.size)?;
+            .download_slice(&mut patches_data, self.responses_buffer.size())?;
 
         let m = self.gpu_links.m;
         let mut all_patches = vec![];
@@ -825,8 +825,7 @@ mod tests {
         // Create GPU search context
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let mut gpu_search_context = GpuSearchContext::new(
             device,
@@ -1061,7 +1060,7 @@ mod tests {
                 search_requests_buffer.clone(),
                 0,
                 0,
-                search_requests_buffer.size,
+                search_requests_buffer.size(),
             )
             .unwrap();
         test.gpu_search_context.run_context().unwrap();
@@ -1078,7 +1077,7 @@ mod tests {
             test.gpu_search_context.device.clone(),
             "Search responses staging buffer",
             gpu::BufferType::GpuToCpu,
-            responses_buffer.size,
+            responses_buffer.size(),
         )
         .unwrap();
 
@@ -1166,7 +1165,7 @@ mod tests {
                 responses_staging_buffer.clone(),
                 0,
                 0,
-                responses_buffer.size,
+                responses_buffer.size(),
             )
             .unwrap();
         test.gpu_search_context.run_context().unwrap();

@@ -10,51 +10,43 @@ use crate::*;
 /// GPU device structure.
 /// It's a wrapper around Vulkan device.
 pub struct Device {
-    /// Name of the device provided by GPU driver.
-    pub name: String,
-
     /// Instance that owns the device.
-    pub instance: Arc<Instance>,
+    instance: Arc<Instance>,
 
     /// Native Vulkan device handle.
-    pub vk_device: ash::Device,
-
-    /// Native Vulkan physical device handle.
-    /// It's the source of the device creation.
-    /// It's managed by the Vulkan instance and does not need to be destroyed.
-    pub vk_physical_device: vk::PhysicalDevice,
+    vk_device: ash::Device,
 
     /// GPU memory allocator from `gpu-allocator` crate.
     /// It's an Option because of drop order. We need to drop it before the device.
     /// But `Allocator` is destroyed by it's own drop.
-    pub gpu_allocator: Option<Mutex<Allocator>>,
+    gpu_allocator: Option<Mutex<Allocator>>,
 
     /// All found compute queues.
-    pub compute_queues: Vec<Queue>,
+    compute_queues: Vec<Queue>,
 
     /// All found transfer queues.
-    pub transfer_queues: Vec<Queue>,
+    _transfer_queues: Vec<Queue>,
 
     /// GPU subgroup (warp in CUDA terms) size.
-    pub subgroup_size: usize,
+    subgroup_size: usize,
 
     /// Is subgroup size (warp) dynamic.
     /// If true, we need to use additional subgroup size control in the pipeline.
     /// And use Vulkan extension that allows to set subgroup size.
-    pub is_dynamic_subgroup_size: bool,
+    is_dynamic_subgroup_size: bool,
 
     /// Maximum work group size for compute shaders.
     /// It's used in bounds checking in Context.
-    pub max_compute_work_group_size: [usize; 3],
+    max_compute_work_group_size: [usize; 3],
 
     /// Selected queue index to use.
-    pub queue_index: usize,
+    queue_index: usize,
 }
 
 // GPU execution queue.
 #[derive(Clone)]
 pub struct Queue {
-    // Native Vulkan queue hander.
+    // Native Vulkan queue handler.
     pub vk_queue: vk::Queue,
 
     // Queue family index for the native Vulkan queue.
@@ -67,27 +59,26 @@ pub struct Queue {
 impl Device {
     pub fn new(
         instance: Arc<Instance>,
-        vk_physical_device: PhysicalDevice,
+        vk_physical_device: &PhysicalDevice,
     ) -> GpuResult<Arc<Device>> {
         Self::new_with_queue_index(instance, vk_physical_device, 0)
     }
 
     pub fn new_with_queue_index(
         instance: Arc<Instance>,
-        vk_physical_device: PhysicalDevice,
+        vk_physical_device: &PhysicalDevice,
         queue_index: usize,
     ) -> GpuResult<Arc<Device>> {
         #[allow(unused_mut)]
-        let mut extensions_cstr: Vec<CString> =
-            vec![CString::from(ash::vk::KhrMaintenance1Fn::name())];
+        let mut extensions_cstr: Vec<CString> = vec![CString::from(ash::khr::maintenance1::NAME)];
         #[cfg(target_os = "macos")]
         {
-            extensions_cstr.push(CString::from(ash::vk::KhrPortabilitySubsetFn::name()));
+            extensions_cstr.push(CString::from(ash::khr::portability_subset::NAME));
         }
 
         let vk_queue_families = unsafe {
             instance
-                .vk_instance
+                .vk_instance()
                 .get_physical_device_queue_family_properties(vk_physical_device.vk_physical_device)
         };
 
@@ -100,39 +91,71 @@ impl Device {
 
         let queue_create_infos: Vec<vk::DeviceQueueCreateInfo> = (0..vk_queue_families.len())
             .map(|queue_family_index| {
-                vk::DeviceQueueCreateInfo::builder()
+                vk::DeviceQueueCreateInfo::default()
                     .flags(vk::DeviceQueueCreateFlags::empty())
                     .queue_family_index(queue_family_index as u32)
                     .queue_priorities(queue_priorities.as_slice())
-                    .build()
             })
             .collect();
 
-        let physical_device_features = vk::PhysicalDeviceFeatures {
-            ..Default::default()
-        };
+        let physical_device_features = vk::PhysicalDeviceFeatures::default();
 
         // TODO(gpu): check presence of features
 
         // Define Vulkan features that we need.
+        let mut enabled_physical_device_features_1_1 =
+            vk::PhysicalDeviceVulkan11Features::default();
+        let mut enabled_physical_device_features_1_2 =
+            vk::PhysicalDeviceVulkan12Features::default();
+        let mut enabled_physical_device_features_1_3 =
+            vk::PhysicalDeviceVulkan13Features::default();
+        let mut enabled_physical_devices_features = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut enabled_physical_device_features_1_1)
+            .push_next(&mut enabled_physical_device_features_1_2)
+            .push_next(&mut enabled_physical_device_features_1_3);
+        unsafe {
+            instance.vk_instance().get_physical_device_features2(
+                vk_physical_device.vk_physical_device,
+                &mut enabled_physical_devices_features,
+            );
+        };
+
         // From Vulkan 1.1 we need storage buffer 16 bit access.
-        let physical_device_features_1_1 =
-            vk::PhysicalDeviceVulkan11Features::builder().storage_buffer16_bit_access(true);
+        if !enabled_physical_device_features_1_1.storage_buffer16_bit_access == 0 {
+            return Err(GpuError::NotSupported(
+                "Storage buffer 16 bit access is not supported".to_string(),
+            ));
+        }
+        let mut physical_device_features_1_1 =
+            vk::PhysicalDeviceVulkan11Features::default().storage_buffer16_bit_access(true);
 
         // From Vulkan 1.2 we need int8/float16 support.
-        let physical_device_features_1_2 = vk::PhysicalDeviceVulkan12Features::builder()
+        if !enabled_physical_device_features_1_2.shader_int8 == 0 {
+            return Err(GpuError::NotSupported("Int8 is not supported".to_string()));
+        }
+        if !enabled_physical_device_features_1_2.shader_float16 == 0 {
+            return Err(GpuError::NotSupported(
+                "Float16 is not supported".to_string(),
+            ));
+        }
+        if !enabled_physical_device_features_1_2.storage_buffer8_bit_access == 0 {
+            return Err(GpuError::NotSupported(
+                "Storage buffer 8 bit access is not supported".to_string(),
+            ));
+        }
+        let mut physical_device_features_1_2 = vk::PhysicalDeviceVulkan12Features::default()
             .shader_int8(true)
             .shader_float16(true)
             .storage_buffer8_bit_access(true);
 
         // From Vulkan 1.3 we need subgroup size control if it's dynamic.
-        let mut physical_device_features_1_3 = vk::PhysicalDeviceVulkan13Features::builder();
+        let mut physical_device_features_1_3 = vk::PhysicalDeviceVulkan13Features::default();
 
         let max_compute_work_group_size;
         let mut is_dynamic_subgroup_size = false;
         let subgroup_size = unsafe {
             let props = instance
-                .vk_instance
+                .vk_instance()
                 .get_physical_device_properties(vk_physical_device.vk_physical_device);
             max_compute_work_group_size = [
                 props.limits.max_compute_work_group_size[0] as usize,
@@ -141,22 +164,25 @@ impl Device {
             ];
             let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties::default();
             let mut vulkan_1_3_properties = vk::PhysicalDeviceVulkan13Properties::default();
-            let mut props2 = vk::PhysicalDeviceProperties2::builder()
+            let mut props2 = vk::PhysicalDeviceProperties2::default()
                 .push_next(&mut subgroup_properties)
-                .push_next(&mut vulkan_1_3_properties)
-                .build();
-            instance.vk_instance.get_physical_device_properties2(
+                .push_next(&mut vulkan_1_3_properties);
+            instance.vk_instance().get_physical_device_properties2(
                 vk_physical_device.vk_physical_device,
                 &mut props2,
-            );
-            log::info!(
-                "Choosed GPU device: {:?}",
-                ::std::ffi::CStr::from_ptr(props.device_name.as_ptr())
             );
 
             let subgroup_size = if vulkan_1_3_properties.min_subgroup_size
                 != vulkan_1_3_properties.max_subgroup_size
             {
+                if !enabled_physical_device_features_1_3.subgroup_size_control == 0 {
+                    return Err(GpuError::NotSupported(
+                        "Subgroup size control is not supported".to_string(),
+                    ));
+                }
+                physical_device_features_1_3 =
+                    physical_device_features_1_3.subgroup_size_control(true);
+
                 if !vulkan_1_3_properties
                     .required_subgroup_size_stages
                     .contains(vk::ShaderStageFlags::COMPUTE)
@@ -168,40 +194,39 @@ impl Device {
                     ));
                 }
                 is_dynamic_subgroup_size = true;
-                physical_device_features_1_3 =
-                    physical_device_features_1_3.subgroup_size_control(true);
                 // prefer max subgroup size
                 vulkan_1_3_properties.max_subgroup_size as usize
             } else {
                 subgroup_properties.subgroup_size as usize
             };
 
+            log::info!("Create GPU device {}", vk_physical_device.name);
             log::debug!("GPU subgroup size: {subgroup_size}");
             subgroup_size
         };
 
-        let mut physical_device_features_1_1 = physical_device_features_1_1.build();
-        let mut physical_device_features_1_2 = physical_device_features_1_2.build();
-        let mut physical_device_features_1_3 = physical_device_features_1_3.build();
-
         // convert extension names to raw pointers to provide to Vulkan
+        Self::check_extensions_list(
+            &instance,
+            vk_physical_device.vk_physical_device,
+            &extensions_cstr,
+        )?;
         let extension_names_raw: Vec<*const i8> = extensions_cstr
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();
 
-        let device_create_info = vk::DeviceCreateInfo::builder()
+        let device_create_info = vk::DeviceCreateInfo::default()
             .flags(vk::DeviceCreateFlags::empty())
             .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(&extension_names_raw)
             .enabled_features(&physical_device_features)
             .push_next(&mut physical_device_features_1_1)
             .push_next(&mut physical_device_features_1_2)
-            .push_next(&mut physical_device_features_1_3)
-            .build();
+            .push_next(&mut physical_device_features_1_3);
 
         let vk_device_result = unsafe {
-            instance.vk_instance.create_device(
+            instance.vk_instance().create_device(
                 vk_physical_device.vk_physical_device,
                 &device_create_info,
                 instance.cpu_allocation_callbacks(),
@@ -240,11 +265,12 @@ impl Device {
         }
 
         let gpu_allocator_result = Allocator::new(&AllocatorCreateDesc {
-            instance: instance.vk_instance.clone(),
+            instance: instance.vk_instance().clone(),
             device: vk_device.clone(),
             physical_device: vk_physical_device.vk_physical_device,
             debug_settings: Default::default(),
             buffer_device_address: false,
+            allocation_sizes: Default::default(),
         });
 
         let gpu_allocator = match gpu_allocator_result {
@@ -258,13 +284,11 @@ impl Device {
         };
 
         Ok(Arc::new(Device {
-            name: vk_physical_device.name.clone(),
             instance: instance.clone(),
             vk_device,
-            vk_physical_device: vk_physical_device.vk_physical_device,
             gpu_allocator,
             compute_queues,
-            transfer_queues,
+            _transfer_queues: transfer_queues,
             subgroup_size,
             max_compute_work_group_size,
             is_dynamic_subgroup_size,
@@ -307,6 +331,55 @@ impl Device {
     /// Get subgroup size (warp in terms of CUDA).
     pub fn subgroup_size(&self) -> usize {
         self.subgroup_size
+    }
+
+    pub fn instance(&self) -> Arc<Instance> {
+        self.instance.clone()
+    }
+
+    pub fn vk_device(&self) -> &ash::Device {
+        &self.vk_device
+    }
+
+    pub fn is_dynamic_subgroup_size(&self) -> bool {
+        self.is_dynamic_subgroup_size
+    }
+
+    pub fn max_compute_work_group_size(&self) -> [usize; 3] {
+        self.max_compute_work_group_size
+    }
+
+    pub fn compute_queue(&self) -> &Queue {
+        &self.compute_queues[self.queue_index % self.compute_queues.len()]
+    }
+
+    fn check_extensions_list(
+        instance: &Instance,
+        vk_physical_device: vk::PhysicalDevice,
+        required_extensions: &[CString],
+    ) -> GpuResult<()> {
+        let available_extensions = unsafe {
+            instance
+                .vk_instance()
+                .enumerate_device_extension_properties(vk_physical_device)?
+        };
+
+        for required_extension in required_extensions {
+            let is_extension_available = available_extensions.iter().any(|extension| {
+                let extension_name =
+                    unsafe { std::ffi::CStr::from_ptr(extension.extension_name.as_ptr()) };
+                extension_name == required_extension.as_c_str()
+            });
+
+            if !is_extension_available {
+                return Err(GpuError::NotSupported(format!(
+                    "Extension {:?} is not supported",
+                    required_extension
+                )));
+            }
+        }
+
+        Ok(())
     }
 }
 

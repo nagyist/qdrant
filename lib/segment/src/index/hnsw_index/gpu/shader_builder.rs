@@ -159,129 +159,119 @@ impl<'a> ShaderBuilder<'a> {
     }
 
     pub fn build(&self) -> OperationResult<Arc<gpu::Shader>> {
-        let mut options = shaderc::CompileOptions::new().unwrap();
-        options.set_optimization_level(shaderc::OptimizationLevel::Performance);
-        options.set_target_env(
-            shaderc::TargetEnv::Vulkan,
-            shaderc::EnvVersion::Vulkan1_3 as u32,
-        );
-        options.set_target_spirv(shaderc::SpirvVersion::V1_3);
+        let mut defines = HashMap::new();
 
-        options.add_macro_definition(
-            "SUBGROUP_SIZE",
-            Some(&self.device.subgroup_size().to_string()),
+        defines.insert(
+            "SUBGROUP_SIZE".to_owned(),
+            Some(self.device.subgroup_size().to_string()),
         );
 
         if let Some(gpu_vector_storage) = self.gpu_vector_storage {
             match gpu_vector_storage.element_type {
                 GpuVectorStorageElementType::Float32 => {
-                    options.add_macro_definition("VECTOR_STORAGE_ELEMENT_FLOAT32", None)
+                    defines.insert("VECTOR_STORAGE_ELEMENT_FLOAT32".to_owned(), None);
                 }
                 GpuVectorStorageElementType::Float16 => {
-                    options.add_macro_definition("VECTOR_STORAGE_ELEMENT_FLOAT16", None)
+                    defines.insert("VECTOR_STORAGE_ELEMENT_FLOAT16".to_owned(), None);
                 }
                 GpuVectorStorageElementType::Uint8 => {
-                    options.add_macro_definition("VECTOR_STORAGE_ELEMENT_UINT8", None)
+                    defines.insert("VECTOR_STORAGE_ELEMENT_UINT8".to_owned(), None);
                 }
                 GpuVectorStorageElementType::Binary => {
-                    options.add_macro_definition("VECTOR_STORAGE_ELEMENT_BINARY", None)
+                    defines.insert("VECTOR_STORAGE_ELEMENT_BINARY".to_owned(), None);
                 }
                 GpuVectorStorageElementType::SQ => {
-                    options.add_macro_definition("VECTOR_STORAGE_ELEMENT_SQ", None)
+                    defines.insert("VECTOR_STORAGE_ELEMENT_SQ".to_owned(), None);
                 }
                 GpuVectorStorageElementType::PQ => {
-                    options.add_macro_definition("VECTOR_STORAGE_ELEMENT_PQ", None)
+                    defines.insert("VECTOR_STORAGE_ELEMENT_PQ".to_owned(), None);
                 }
             }
 
             match gpu_vector_storage.distance {
-                Distance::Cosine => options.add_macro_definition("COSINE_DISTANCE", None),
-                Distance::Euclid => options.add_macro_definition("EUCLID_DISTANCE", None),
-                Distance::Dot => options.add_macro_definition("DOT_DISTANCE", None),
-                Distance::Manhattan => options.add_macro_definition("MANHATTAN_DISTANCE", None),
+                Distance::Cosine => {
+                    defines.insert("COSINE_DISTANCE".to_owned(), None);
+                }
+                Distance::Euclid => {
+                    defines.insert("EUCLID_DISTANCE".to_owned(), None);
+                }
+                Distance::Dot => {
+                    defines.insert("DOT_DISTANCE".to_owned(), None);
+                }
+                Distance::Manhattan => {
+                    defines.insert("MANHATTAN_DISTANCE".to_owned(), None);
+                }
             }
 
             match &gpu_vector_storage.quantization {
                 Some(GpuQuantization::Scalar(scalar)) => {
-                    options.add_macro_definition(
-                        "SQ_MULTIPLIER",
-                        Some(&scalar.multiplier.to_string()),
+                    defines.insert(
+                        "SQ_MULTIPLIER".to_owned(),
+                        Some(scalar.multiplier.to_string()),
                     );
-                    options.add_macro_definition("SQ_DIFF", Some(&scalar.diff.to_string()));
+                    defines.insert("SQ_DIFF".to_owned(), Some(scalar.diff.to_string()));
                 }
                 Some(GpuQuantization::Product(product)) => {
-                    options.add_macro_definition(
-                        "PQ_DIVISIONS_COUNT",
-                        Some(&product.divisions_count.to_string()),
+                    defines.insert(
+                        "PQ_DIVISIONS_COUNT".to_owned(),
+                        Some(product.divisions_count.to_string()),
                     );
                 }
                 None => {}
             }
 
-            options.add_macro_definition("DIM", Some(&gpu_vector_storage.dim.to_string()));
+            defines.insert("DIM".to_owned(), Some(gpu_vector_storage.dim.to_string()));
 
             // options.add_macro_definition("STORAGES_COUNT", Some(&gpu_vector_storage.storages_count.to_string()));
             // options.add_macro_definition("STORAGE_SIZE", Some(&gpu_vector_storage.storage_size.to_string()));
         }
 
         if self.exact == Some(true) {
-            options.add_macro_definition("EXACT", None);
+            defines.insert("EXACT".to_owned(), None);
         }
 
         if let Some(nearest_heap_ef) = self.nearest_heap_ef {
-            options.add_macro_definition("NEAREST_HEAP_EF", Some(&nearest_heap_ef.to_string()));
+            defines.insert(
+                "NEAREST_HEAP_EF".to_owned(),
+                Some(nearest_heap_ef.to_string()),
+            );
         }
 
         if let Some(nearest_heap_capacity) = self.nearest_heap_capacity {
-            options.add_macro_definition(
-                "NEAREST_HEAP_CAPACITY",
-                Some(&nearest_heap_capacity.to_string()),
+            defines.insert(
+                "NEAREST_HEAP_CAPACITY".to_owned(),
+                Some(nearest_heap_capacity.to_string()),
             );
         }
 
         if let Some(candidates_heap_capacity) = self.candidates_heap_capacity {
-            options.add_macro_definition(
-                "CANDIDATES_HEAP_CAPACITY",
-                Some(&candidates_heap_capacity.to_string()),
+            defines.insert(
+                "CANDIDATES_HEAP_CAPACITY".to_owned(),
+                Some(candidates_heap_capacity.to_string()),
             );
         }
 
         if let Some(links_capacity) = self.links_capacity {
-            options.add_macro_definition("LINKS_CAPACITY", Some(&links_capacity.to_string()));
-        }
-
-        if let Some(visited_flags_capacity) = self.visited_flags_capacity {
-            options.add_macro_definition(
-                "VISITED_FLAGS_CAPACITY",
-                Some(&visited_flags_capacity.to_string()),
+            defines.insert(
+                "LINKS_CAPACITY".to_owned(),
+                Some(links_capacity.to_string()),
             );
         }
 
-        options.set_include_callback(|filename, _, _, _| {
-            let code = self.shaders_map.get(filename).unwrap();
-            Ok(shaderc::ResolvedInclude {
-                resolved_name: filename.to_string(),
-                content: code.to_owned(),
-            })
-        });
+        if let Some(visited_flags_capacity) = self.visited_flags_capacity {
+            defines.insert(
+                "VISITED_FLAGS_CAPACITY".to_owned(),
+                Some(visited_flags_capacity.to_string()),
+            );
+        }
 
         let timer = std::time::Instant::now();
         let compiled = self
             .device
-            .instance
-            .compiler
-            .compile_into_spirv(
-                &self.shader_code,
-                shaderc::ShaderKind::Compute,
-                "shader.glsl",
-                "main",
-                Some(&options),
-            )
+            .instance()
+            .compile_shader(&self.shader_code, Some(&defines), Some(&self.shaders_map))
             .unwrap();
         log::debug!("Shader compilation took: {:?}", timer.elapsed());
-        Ok(Arc::new(gpu::Shader::new(
-            self.device.clone(),
-            compiled.as_binary_u8(),
-        )?))
+        Ok(gpu::Shader::new(self.device.clone(), &compiled)?)
     }
 }

@@ -441,7 +441,7 @@ impl GpuVectorStorage {
                 )?)
             })
             .collect::<gpu::GpuResult<Vec<_>>>()?;
-        log::trace!("Storage buffer size {}", vectors_buffer[0].size);
+        log::trace!("Storage buffer size {}", vectors_buffer[0].size());
 
         let mut upload_context = gpu::Context::new(device.clone())?;
         let staging_buffer = gpu::Buffer::new(
@@ -452,7 +452,7 @@ impl GpuVectorStorage {
         )?;
         log::trace!(
             "Staging buffer size {}, upload_points_count = {}",
-            staging_buffer.size,
+            staging_buffer.size(),
             upload_points_count
         );
 
@@ -579,7 +579,7 @@ impl GpuVectorStorage {
     }
 
     pub fn get_capacity(device: &Arc<gpu::Device>, dim: usize) -> usize {
-        let alignment = device.subgroup_size * ELEMENTS_PER_SUBGROUP;
+        let alignment = device.subgroup_size() * ELEMENTS_PER_SUBGROUP;
         dim + (alignment - dim % alignment) % alignment
     }
 
@@ -603,7 +603,7 @@ impl GpuVectorStorage {
             device.clone(),
             "SQ offsets staging buffer",
             gpu::BufferType::CpuToGpu,
-            sq_offsets_buffer.size,
+            sq_offsets_buffer.size(),
         )?;
 
         let mut upload_context = gpu::Context::new(device.clone())?;
@@ -618,7 +618,7 @@ impl GpuVectorStorage {
             sq_offsets_buffer.clone(),
             0,
             0,
-            sq_offsets_buffer.size,
+            sq_offsets_buffer.size(),
         )?;
         upload_context.run()?;
         upload_context.wait_finish(GPU_TIMEOUT)?;
@@ -646,7 +646,7 @@ impl GpuVectorStorage {
             device.clone(),
             "PQ centroids staging buffer",
             gpu::BufferType::CpuToGpu,
-            centroids_buffer.size,
+            centroids_buffer.size(),
         )?;
         let vector_division_buffer = gpu::Buffer::new(
             device.clone(),
@@ -658,7 +658,7 @@ impl GpuVectorStorage {
             device.clone(),
             "PQ vector division staging buffer",
             gpu::BufferType::CpuToGpu,
-            vector_division_buffer.size,
+            vector_division_buffer.size(),
         )?;
 
         let mut upload_context = gpu::Context::new(device.clone())?;
@@ -674,7 +674,7 @@ impl GpuVectorStorage {
             centroids_buffer.clone(),
             0,
             0,
-            centroids_buffer.size,
+            centroids_buffer.size(),
         )?;
 
         let vector_division: Vec<_> = quantized_storage
@@ -690,7 +690,7 @@ impl GpuVectorStorage {
             vector_division_buffer.clone(),
             0,
             0,
-            vector_division_buffer.size,
+            vector_division_buffer.size(),
         )?;
 
         upload_context.run()?;
@@ -796,8 +796,7 @@ mod tests {
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, None, force_half_precision).unwrap();
@@ -958,8 +957,7 @@ mod tests {
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, Some(&quantized_vectors), false)
@@ -1098,8 +1096,7 @@ mod tests {
 
         let debug_messenger = gpu::PanicIfErrorMessenger {};
         let instance = gpu::Instance::new(Some(&debug_messenger), None, false).unwrap();
-        let device =
-            gpu::Device::new(instance.clone(), instance.vk_physical_devices[0].clone()).unwrap();
+        let device = gpu::Device::new(instance.clone(), &instance.physical_devices()[0]).unwrap();
 
         let gpu_vector_storage =
             GpuVectorStorage::new(device.clone(), &storage, Some(&quantized_vectors), false)
