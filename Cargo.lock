@@ -5773,7 +5773,6 @@ dependencies = [
  "serde_json",
  "serde_variant",
  "sha2",
- "shaderc",
  "smallvec",
  "smol_str",
  "sparse",
