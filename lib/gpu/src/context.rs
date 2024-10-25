@@ -249,9 +249,7 @@ impl Context {
         }
 
         // Reset fence to unsignaled state.
-        let fence_reset_result = unsafe {
-            self.device.vk_device().reset_fences(&[self.vk_fence])
-        };
+        let fence_reset_result = unsafe { self.device.vk_device().reset_fences(&[self.vk_fence]) };
         if let Err(e) = fence_reset_result {
             self.destroy_command_buffer();
             return Err(GpuError::from(e));
@@ -285,7 +283,10 @@ impl Context {
 
         // Get the current status of fence.
         let fence_status = unsafe {
-            self.device.vk_device().get_fence_status(self.vk_fence).map_err(GpuError::from)
+            self.device
+                .vk_device()
+                .get_fence_status(self.vk_fence)
+                .map_err(GpuError::from)
         };
 
         match fence_status {
@@ -293,15 +294,14 @@ impl Context {
                 // GPU execution finished already, clear command buffer and return.
                 self.destroy_command_buffer();
                 Ok(())
-            },
+            }
             Ok(false) => {
                 // GPU is processing. Wait for signal with timeout.
                 let wait_result = unsafe {
-                    self.device.vk_device().wait_for_fences(
-                        &[self.vk_fence],
-                        true,
-                        timeout.as_nanos() as u64,
-                    ).map_err(GpuError::from)
+                    self.device
+                        .vk_device()
+                        .wait_for_fences(&[self.vk_fence], true, timeout.as_nanos() as u64)
+                        .map_err(GpuError::from)
                 };
 
                 if matches!(wait_result, Err(GpuError::Timeout)) {
