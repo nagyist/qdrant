@@ -115,6 +115,8 @@ void set_target(uint point_id) {
 }
 
 float similarity(uint point_id) {
+    VECTOR_STORAGE_PREPROCESS();
+
     float result = 0.0;
     uint index = (point_id / STORAGES_COUNT) * (DIM / 4) + SUBGROUP_INVOCATION_ID;
     uint storage_index = point_id % STORAGES_COUNT;
@@ -133,18 +135,8 @@ float similarity(uint point_id) {
         break;
     }
 
-#ifdef VECTOR_STORAGE_ELEMENT_BINARY
-    float xor_product = subgroupAdd(result);
-    float zeros_count = float((DIM / 4) * 32) - xor_product;
-    return zeros_count - xor_product;
-#else
-#ifdef VECTOR_STORAGE_ELEMENT_SQ
-    float sq_offset = target_offset + vector_offsets.data[point_id] - SQ_DIFF;
-    return SQ_MULTIPLIER * subgroupAdd(result) + sq_offset;
-#else
-    return subgroupAdd(result);
-#endif
-#endif
+    VECTOR_STORAGE_POSTPROCESS_SCORE(result);
+    return result;
 }
 
 #endif

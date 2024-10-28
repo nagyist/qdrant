@@ -19,8 +19,4 @@ struct ScoredPoint {
     float score;
 };
 
-float vec4_components_sum(vec4 v) {
-    return v.x + v.y + v.z + v.w;
-}
-
 #endif

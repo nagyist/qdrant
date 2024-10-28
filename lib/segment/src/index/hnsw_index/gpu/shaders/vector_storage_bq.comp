@@ -3,6 +3,11 @@
 
 // uint = 4 * uint8_t, vec4 analogue for BQ
 #define VECTOR_STORAGE_ELEMENT_TYPE uint
+#define VECTOR_STORAGE_PREPROCESS()
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) \
+    float xor_product = subgroupAdd(RESULT); \
+    float zeros_count = float((DIM / 4) * 32) - xor_product; \
+    RESULT = zeros_count - xor_product;
 
 #ifdef COSINE_DISTANCE
 #define VECTOR_STORAGE_SCORE_ELEMENT(a, b) float(bitCount(a ^ b))

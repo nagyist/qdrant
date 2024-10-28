@@ -7,23 +7,49 @@ float dot_u8vec4(u8vec4 a, u8vec4 b) {
 }
 
 #define VECTOR_STORAGE_ELEMENT_TYPE u8vec4
+#define VECTOR_STORAGE_PREPROCESS()
 
 #ifdef COSINE_DISTANCE
 #define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) \
+    float sq_offset = target_offset + vector_offsets.data[point_id] - SQ_DIFF; \
+    RESULT = SQ_MULTIPLIER * subgroupAdd(RESULT) + sq_offset;
+
 #endif
 
 #ifdef DOT_DISTANCE
 #define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) \
+    float sq_offset = target_offset + vector_offsets.data[point_id] - SQ_DIFF; \
+    RESULT = SQ_MULTIPLIER * subgroupAdd(RESULT) + sq_offset;
 #endif
 
 // TODO(gpu)
 #ifdef EUCLID_DISTANCE
 #define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) \
+    float sq_offset = target_offset + vector_offsets.data[point_id] - SQ_DIFF; \
+    RESULT = SQ_MULTIPLIER * subgroupAdd(RESULT) + sq_offset;
+
 #endif
 
 // TODO(gpu)
 #ifdef MANHATTAN_DISTANCE
-#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
+
+float manhattan_u8vec4(u8vec4 a, u8vec4 b) {
+    float sum = abs(float(a.x) - float(b.x)) + abs(float(a.y) - float(b.y)) + abs(float(a.z) - float(b.z)) + abs(float(a.w) - float(b.w));
+    return sum;
+}
+
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) manhattan_u8vec4(a, b)
+
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) \
+    float sq_offset = target_offset + vector_offsets.data[point_id] - SQ_DIFF; \
+    RESULT = SQ_MULTIPLIER * subgroupAdd(RESULT) + sq_offset;
+
 #endif
 
 #endif

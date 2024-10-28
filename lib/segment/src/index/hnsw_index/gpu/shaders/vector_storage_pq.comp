@@ -7,6 +7,8 @@ float dot_u8vec4(u8vec4 a, u8vec4 b) {
 }
 
 #define VECTOR_STORAGE_ELEMENT_TYPE u8vec4
+#define VECTOR_STORAGE_PREPROCESS()
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) RESULT = subgroupAdd(RESULT);
 
 #ifdef COSINE_DISTANCE
 #define VECTOR_STORAGE_SCORE_ELEMENT(a, b) dot_u8vec4(a, b)
