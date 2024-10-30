@@ -1,0 +1,28 @@
+#ifndef VECTOR_STORAGE_BQ_HEADER
+#define VECTOR_STORAGE_BQ_HEADER
+
+// uint = 4 * uint8_t, vec4 analogue for BQ
+#define VECTOR_STORAGE_ELEMENT_TYPE uint
+#define VECTOR_STORAGE_PREPROCESS()
+#define VECTOR_STORAGE_POSTPROCESS_SCORE(RESULT) \
+    float xor_product = subgroupAdd(RESULT); \
+    float zeros_count = float((DIM / 4) * 32) - xor_product; \
+    RESULT = zeros_count - xor_product - BQ_SKIP_COUNT;
+
+#ifdef COSINE_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) float(bitCount(a ^ b))
+#endif
+
+#ifdef DOT_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) float(bitCount(a ^ b))
+#endif
+
+#ifdef EUCLID_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) float(bitCount(a ^ b))
+#endif
+
+#ifdef MANHATTAN_DISTANCE
+#define VECTOR_STORAGE_SCORE_ELEMENT(a, b) float(bitCount(a ^ b))
+#endif
+
+#endif

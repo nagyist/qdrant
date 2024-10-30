@@ -111,7 +111,7 @@ impl fmt::Debug for QuantizedVectorStorage {
 
 #[derive(Debug)]
 pub struct QuantizedVectors {
-    storage_impl: QuantizedVectorStorage,
+    pub storage_impl: QuantizedVectorStorage,
     config: QuantizedVectorsConfig,
     path: PathBuf,
     distance: Distance,

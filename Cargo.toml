@@ -17,7 +17,7 @@ default-run = "qdrant"
 workspace = true
 
 [features]
-default = ["web", "parking_lot"]
+default = ["web", "parking_lot", "gpu"]
 web = ["actix-web"]
 multiling-chinese = ["segment/multiling-chinese"]
 multiling-japanese = ["segment/multiling-japanese"]
@@ -37,7 +37,7 @@ tokio-tracing = ["tokio/tracing"]
 stacktrace = ["rstack-self"]
 chaos-testing = []
 data-consistency-check = ["collection/data-consistency-check"]
-gpu = ["gpu/gpu"]
+gpu = ["gpu/gpu", "segment/gpu"]
 
 [dev-dependencies]
 serde_urlencoded = "0.7"

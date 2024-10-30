@@ -5729,6 +5729,7 @@ dependencies = [
  "generic-tests",
  "geo",
  "geohash",
+ "gpu",
  "half 2.4.1",
  "http 1.0.0",
  "indexmap 2.6.0",
