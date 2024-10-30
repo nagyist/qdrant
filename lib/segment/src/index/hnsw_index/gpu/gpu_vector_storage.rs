@@ -723,8 +723,9 @@ mod tests {
     use crate::spaces::metric::Metric;
     use crate::spaces::simple::{CosineMetric, DotProductMetric, EuclidMetric, ManhattanMetric};
     use crate::types::{
-        BinaryQuantization, BinaryQuantizationConfig, Distance, QuantizationConfig,
-        ScalarQuantization, ScalarQuantizationConfig,
+        BinaryQuantization, BinaryQuantizationConfig, Distance, ProductQuantization,
+        ProductQuantizationConfig, QuantizationConfig, ScalarQuantization,
+        ScalarQuantizationConfig,
     };
     use crate::vector_storage::dense::simple_dense_vector_storage::{
         open_simple_dense_byte_vector_storage, open_simple_dense_half_vector_storage,
@@ -1216,7 +1217,7 @@ mod tests {
             .filter_level(log::LevelFilter::Trace)
             .try_init();
 
-        let quantization_config = &QuantizationConfig::Scalar(ScalarQuantization {
+        let quantization_config = QuantizationConfig::Scalar(ScalarQuantization {
             scalar: ScalarQuantizationConfig {
                 always_ram: Some(true),
                 r#type: crate::types::ScalarType::Int8,
@@ -1230,6 +1231,79 @@ mod tests {
             let precision = get_precision(element_type, dim, distance);
             log::info!(
                 "Testing SQ distance {:?}, element type {:?}, dim {} with precision {}",
+                distance,
+                element_type,
+                dim,
+                precision
+            );
+            test_gpu_vector_storage_impl(
+                element_type,
+                NUM_VECTORS,
+                dim,
+                distance,
+                Some(quantization_config.clone()),
+                false,
+                10.0 * precision,
+            );
+        }
+    }
+
+    #[test]
+    fn test_gpu_vector_storage_bq() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Trace)
+            .try_init();
+
+        let quantization_config = QuantizationConfig::Binary(BinaryQuantization {
+            binary: BinaryQuantizationConfig {
+                always_ram: Some(true),
+            },
+        });
+
+        for (&distance, &element_type, &dim) in
+            itertools::iproduct!(DISTANCES.iter(), ELEMENT_TYPES.iter(), DIMS.iter())
+        {
+            let precision = get_precision(element_type, dim, distance);
+            log::info!(
+                "Testing BQ distance {:?}, element type {:?}, dim {} with precision {}",
+                distance,
+                element_type,
+                dim,
+                precision
+            );
+            test_gpu_vector_storage_impl(
+                element_type,
+                NUM_VECTORS,
+                dim,
+                distance,
+                Some(quantization_config.clone()),
+                false,
+                10.0 * precision,
+            );
+        }
+    }
+
+    #[test]
+    fn test_gpu_vector_storage_pq() {
+        let _ = env_logger::builder()
+            .is_test(true)
+            .filter_level(log::LevelFilter::Trace)
+            .try_init();
+
+        let quantization_config = QuantizationConfig::Product(ProductQuantization {
+            product: ProductQuantizationConfig {
+                always_ram: Some(true),
+                compression: crate::types::CompressionRatio::X4,
+            },
+        });
+
+        for (&distance, &element_type, &dim) in
+            itertools::iproduct!(DISTANCES.iter(), ELEMENT_TYPES.iter(), DIMS.iter())
+        {
+            let precision = get_precision(element_type, dim, distance);
+            log::info!(
+                "Testing PQ distance {:?}, element type {:?}, dim {} with precision {}",
                 distance,
                 element_type,
                 dim,
