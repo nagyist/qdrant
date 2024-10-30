@@ -204,6 +204,12 @@ impl<'a> ShaderBuilder<'a> {
             }
 
             match &gpu_vector_storage.quantization {
+                Some(GpuQuantization::Binary(binary)) => {
+                    defines.insert(
+                        "BQ_SKIP_COUNT".to_owned(),
+                        Some(binary.skip_count.to_string()),
+                    );
+                }
                 Some(GpuQuantization::Scalar(scalar)) => {
                     defines.insert(
                         "SQ_MULTIPLIER".to_owned(),

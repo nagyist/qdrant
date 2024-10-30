@@ -1,7 +1,9 @@
 use std::borrow::Cow;
+use std::fmt::Binary;
 use std::sync::Arc;
 
 use common::types::PointOffsetType;
+use quantization::encoded_vectors_binary::{BitsStoreType, EncodedVectorsBin};
 use quantization::{EncodedStorage, EncodedVectorsPQ, EncodedVectorsU8};
 
 use crate::common::operation_error::{OperationError, OperationResult};
@@ -41,8 +43,33 @@ pub struct GpuVectorStorage {
 }
 
 pub enum GpuQuantization {
+    Binary(GpuBinaryQuantization),
     Scalar(GpuScalarQuantization),
     Product(GpuProductQuantization),
+}
+
+pub struct GpuBinaryQuantization {
+    pub skip_count: usize,
+}
+
+impl GpuBinaryQuantization {
+    pub fn new<T: BitsStoreType, TStorage: EncodedStorage>(
+        device: Arc<gpu::Device>,
+        quantized_storage: &EncodedVectorsBin<T, TStorage>,
+        num_vectors: usize,
+    ) -> Self {
+        let vector = if num_vectors > 0 {
+            quantized_storage.get_quantized_vector(0)
+        } else {
+            &[]
+        };
+        let bits_count = vector.len() * std::mem::size_of::<u8>();
+        let gpu_bits_count =
+            GpuVectorStorage::get_capacity(&device, vector.len()) * std::mem::size_of::<u8>();
+        Self {
+            skip_count: gpu_bits_count - bits_count,
+        }
+    }
 }
 
 pub struct GpuScalarQuantization {
@@ -157,22 +184,30 @@ impl GpuVectorStorage {
             }
             QuantizedVectorStorage::BinaryRam(quantized_storage) => {
                 Self::new_typed::<VectorElementTypeByte>(
-                    device,
+                    device.clone(),
                     GpuVectorStorageElementType::Binary,
                     vector_storage.distance(),
                     vector_storage.total_vector_count(),
                     |id| Cow::Borrowed(quantized_storage.get_quantized_vector(id)),
-                    None,
+                    Some(GpuQuantization::Binary(GpuBinaryQuantization::new(
+                        device,
+                        quantized_storage,
+                        vector_storage.total_vector_count(),
+                    ))),
                 )
             }
             QuantizedVectorStorage::BinaryMmap(quantized_storage) => {
                 Self::new_typed::<VectorElementTypeByte>(
-                    device,
+                    device.clone(),
                     GpuVectorStorageElementType::Binary,
                     vector_storage.distance(),
                     vector_storage.total_vector_count(),
                     |id| Cow::Borrowed(quantized_storage.get_quantized_vector(id)),
-                    None,
+                    Some(GpuQuantization::Binary(GpuBinaryQuantization::new(
+                        device,
+                        quantized_storage,
+                        vector_storage.total_vector_count(),
+                    ))),
                 )
             }
             QuantizedVectorStorage::ScalarRamMulti(_) => Err(OperationError::from(
@@ -531,6 +566,7 @@ impl GpuVectorStorage {
             descriptor_set_layout_builder = descriptor_set_layout_builder.add_storage_buffer(i);
         }
         match &quantization {
+            Some(GpuQuantization::Binary(_)) => {}
             Some(GpuQuantization::Scalar(_)) => {
                 descriptor_set_layout_builder =
                     descriptor_set_layout_builder.add_storage_buffer(STORAGES_COUNT);
@@ -551,6 +587,7 @@ impl GpuVectorStorage {
                 descriptor_set_builder.add_storage_buffer(i, vector_buffer.clone());
         }
         match &quantization {
+            Some(GpuQuantization::Binary(_)) => {}
             Some(GpuQuantization::Scalar(sq)) => {
                 descriptor_set_builder = descriptor_set_builder
                     .add_storage_buffer(STORAGES_COUNT, sq.offsets_buffer.clone());
