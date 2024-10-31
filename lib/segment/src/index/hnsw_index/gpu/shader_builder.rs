@@ -222,6 +222,10 @@ impl<'a> ShaderBuilder<'a> {
                         "PQ_DIVISIONS_COUNT".to_owned(),
                         Some(product.divisions_count.to_string()),
                     );
+                    defines.insert(
+                        "PQ_CENTROIDS_DIM".to_owned(),
+                        Some(product.centroids_dim.to_string()),
+                    );
                 }
                 None => {}
             }

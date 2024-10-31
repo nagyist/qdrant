@@ -7,6 +7,9 @@
 
 #include "common.comp"
 
+#define STORAGES_COUNT 4
+#define STORAGE(STORAGE_INDEX) CONCAT(vectors, STORAGE_INDEX)
+
 #ifdef VECTOR_STORAGE_ELEMENT_FLOAT32
 #include "vector_storage_f32.comp"
 #endif
@@ -31,9 +34,6 @@
 #include "vector_storage_bq.comp"
 #endif
 
-#define STORAGES_COUNT 4
-#define STORAGE(STORAGE_INDEX) CONCAT(vectors, STORAGE_INDEX)
-
 #define VECTOR_STORAGE_DEFINE(STORAGE_INDEX) \
     layout(set = VECTOR_STORAGE_LAYOUT_SET, binding = STORAGE_INDEX) \
     readonly buffer CONCAT(Vectors, STORAGE_INDEX) { \
@@ -52,26 +52,6 @@ layout(set = VECTOR_STORAGE_LAYOUT_SET, binding = STORAGES_COUNT) \
 readonly buffer VectorOffsets { \
     float data[]; \
 } vector_offsets;
-
-#endif
-
-// PQ buffers
-#ifdef VECTOR_STORAGE_ELEMENT_PQ
-
-layout(set = VECTOR_STORAGE_LAYOUT_SET, binding = STORAGES_COUNT) \
-readonly buffer Centroids { \
-    float data[]; \
-} centroids;
-
-struct PQRange {
-    uint start;
-    uint end;
-};
-
-layout(set = VECTOR_STORAGE_LAYOUT_SET, binding = STORAGES_COUNT + 1) \
-readonly buffer VectorDivisions { \
-    PQRange data[]; \
-} vector_divisions;
 
 #endif
 

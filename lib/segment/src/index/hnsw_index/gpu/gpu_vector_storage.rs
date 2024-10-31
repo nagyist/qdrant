@@ -85,6 +85,7 @@ pub struct GpuProductQuantization {
     pub centroids_buffer: Arc<gpu::Buffer>,
     pub vector_division_buffer: Arc<gpu::Buffer>,
     pub divisions_count: usize,
+    pub centroids_dim: usize,
 }
 
 impl GpuVectorStorage {
@@ -751,6 +752,12 @@ impl GpuVectorStorage {
             centroids_buffer,
             vector_division_buffer,
             divisions_count: quantized_storage.get_metadata().vector_division.len(),
+            centroids_dim: quantized_storage
+                .get_metadata()
+                .centroids
+                .get(0)
+                .map(|c| c.len())
+                .unwrap_or_default(),
         })
     }
 }
