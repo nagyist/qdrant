@@ -27,13 +27,6 @@ def test_payload_indexing_operations():
     )
     assert response.ok
 
-    response = request_with_validation(
-        api='/collections/{collection_name}',
-        method="GET",
-        path_params={'collection_name': collection_name},
-    )
-    assert response.ok
-
     # Create index
     response = request_with_validation(
         api='/collections/{collection_name}/index',
@@ -53,8 +46,8 @@ def test_payload_indexing_operations():
         path_params={'collection_name': collection_name},
     )
     assert response.ok
-    assert response.json()[
-        'result']['payload_schema']['test_payload']['data_type'] == "keyword"
+    assert response.json()['result']['payload_schema']['test_payload']['data_type'] == "keyword"
+    assert response.json()['result']['payload_schema']['test_payload']['points'] == 1
 
     # Delete index
     response = request_with_validation(

@@ -3600,7 +3600,7 @@ dependencies = [
 [[package]]
 name = "mmap-value-storage"
 version = "0.1.0"
-source = "git+https://github.com/qdrant/mmap-payload-storage#2a9c285e512685e3895857be4f0af8dc562ea335"
+source = "git+https://github.com/qdrant/mmap-payload-storage#259373fdf04f3b0b830e456a7438b36f7a8f77fb"
 dependencies = [
  "bitvec",
  "ciborium",
