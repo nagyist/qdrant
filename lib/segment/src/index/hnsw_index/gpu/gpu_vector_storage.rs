@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::fmt::Binary;
 use std::sync::Arc;
 
 use common::types::PointOffsetType;
@@ -56,6 +55,7 @@ impl GpuBinaryQuantization {
     pub fn new<T: BitsStoreType, TStorage: EncodedStorage>(
         device: Arc<gpu::Device>,
         quantized_storage: &EncodedVectorsBin<T, TStorage>,
+        orig_dim: usize,
         num_vectors: usize,
     ) -> Self {
         let vector = if num_vectors > 0 {
@@ -63,9 +63,12 @@ impl GpuBinaryQuantization {
         } else {
             &[]
         };
-        let bits_count = vector.len() * std::mem::size_of::<u8>();
-        let gpu_bits_count =
-            GpuVectorStorage::get_capacity(&device, vector.len()) * std::mem::size_of::<u8>();
+        let bits_count = orig_dim;
+        let gpu_bits_count = GpuVectorStorage::get_capacity(
+            &device,
+            GpuVectorStorageElementType::Binary,
+            vector.len(),
+        ) * 8;
         Self {
             skip_count: gpu_bits_count - bits_count,
         }
@@ -192,6 +195,7 @@ impl GpuVectorStorage {
                     Some(GpuQuantization::Binary(GpuBinaryQuantization::new(
                         device,
                         quantized_storage,
+                        quantized_storage.get_vector_parameters().dim,
                         vector_storage.total_vector_count(),
                     ))),
                 )
@@ -206,6 +210,7 @@ impl GpuVectorStorage {
                     Some(GpuQuantization::Binary(GpuBinaryQuantization::new(
                         device,
                         quantized_storage,
+                        quantized_storage.get_vector_parameters().dim,
                         vector_storage.total_vector_count(),
                     ))),
                 )
@@ -462,7 +467,7 @@ impl GpuVectorStorage {
 
         let dim = get_vector(0).len();
 
-        let capacity = Self::get_capacity(&device, dim);
+        let capacity = Self::get_capacity(&device, element_type, dim);
         let upload_points_count = UPLOAD_CHUNK_SIZE / (capacity * std::mem::size_of::<TElement>());
 
         let points_in_storage_count = Self::get_points_in_storage_count(count);
@@ -615,8 +620,17 @@ impl GpuVectorStorage {
         })
     }
 
-    pub fn get_capacity(device: &Arc<gpu::Device>, dim: usize) -> usize {
-        let alignment = device.subgroup_size() * ELEMENTS_PER_SUBGROUP;
+    pub fn get_capacity(
+        device: &Arc<gpu::Device>,
+        element_type: GpuVectorStorageElementType,
+        dim: usize,
+    ) -> usize {
+        let alignment = match element_type {
+            GpuVectorStorageElementType::Binary => {
+                std::cmp::max(32, device.subgroup_size()) * ELEMENTS_PER_SUBGROUP
+            }
+            _ => device.subgroup_size() * ELEMENTS_PER_SUBGROUP,
+        };
         dim + (alignment - dim % alignment) % alignment
     }
 
@@ -1244,7 +1258,7 @@ mod tests {
         TestElementType::Float16,
         TestElementType::Uint8,
     ];
-    static DIMS: [usize; 3] = [16, 512, 256 + 17];
+    static DIMS: [usize; 3] = [15, 512, 256 + 17];
     static NUM_VECTORS: usize = 2048 + 17;
 
     #[test]

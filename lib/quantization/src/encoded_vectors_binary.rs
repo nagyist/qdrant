@@ -258,6 +258,10 @@ impl<TBitsStoreType: BitsStoreType, TStorage: EncodedStorage>
         self.encoded_vectors
             .get_vector_data(i as _, self.get_quantized_vector_size())
     }
+
+    pub fn get_vector_parameters(&self) -> &VectorParameters {
+        &self.metadata.vector_parameters
+    }
 }
 
 impl<TBitsStoreType: BitsStoreType, TStorage: EncodedStorage>
