@@ -55,6 +55,26 @@ readonly buffer VectorOffsets { \
 
 #endif
 
+// PQ buffers
+#ifdef VECTOR_STORAGE_ELEMENT_PQ
+
+layout(set = VECTOR_STORAGE_LAYOUT_SET, binding = STORAGES_COUNT) \
+readonly buffer Centroids { \
+    float data[]; \
+} centroids;
+
+struct PQRange {
+    uint start;
+    uint end;
+};
+
+layout(set = VECTOR_STORAGE_LAYOUT_SET, binding = STORAGES_COUNT + 1) \
+readonly buffer VectorDivisions { \
+    PQRange data[]; \
+} vector_divisions;
+
+#endif
+
 #if DIM / (4 * SUBGROUP_SIZE) > 1
 
 #define VECTOR_STORAGE_SCORE_SUBGROUP(STORAGE_INDEX) \
